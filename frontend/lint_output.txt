@@ -1,0 +1,229 @@
+
+> frontend@0.0.0 lint
+> eslint .
+
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/App.jsx
+  24:9  error  'location' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/api/axios.js
+  33:26  error  'err' is defined but never used  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/components/BookingModal.jsx
+  2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/components/Chatbot.jsx
+   2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                no-unused-vars
+  12:37  error  React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+  15:43  error  React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+  16:31  error  React Hook "useState" is called conditionally. React Hooks must be called in the exact same order in every component render  react-hooks/rules-of-hooks
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/components/Features.jsx
+  2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/components/Hero.jsx
+  2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u        no-unused-vars
+  2:18  error  'useScroll' is defined but never used. Allowed unused vars must match /^[A-Z_]/u     no-unused-vars
+  2:29  error  'useTransform' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/components/LogoutModal.jsx
+  2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/components/Navbar.jsx
+   4:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               no-unused-vars
+  44:22  error  'err' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             no-unused-vars
+  56:9   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  54 |     // Close mobile menu on route change
+  55 |     useEffect(() => {
+> 56 |         setIsMobileMenuOpen(false);
+     |         ^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  57 |     }, [location.pathname]);
+  58 |
+  59 |     const noNavbarRoutes = ['/login', '/register', '/forgot-password'];  react-hooks/set-state-in-effect
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/components/NotificationManager.jsx
+  34:13  error    Error: Cannot access variable before it is declared
+
+`fetchInitialLastId` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  32 |
+  33 |             // Initial fetch to get the current last ID (don't notify for old ones)
+> 34 |             fetchInitialLastId();
+     |             ^^^^^^^^^^^^^^^^^^ `fetchInitialLastId` accessed before it is declared
+  35 |
+  36 |             // Set up polling (every 10 seconds)
+  37 |             console.log("NotificationManager: Starting polling...");
+
+  45 |     }, [authenticated, user]);
+  46 |
+> 47 |     const fetchInitialLastId = async () => {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 48 |         try {
+     | ^^^^^^^^^^^^^
+> 49 |             const response = await api.get('notifications/');
+     …
+     | ^^^^^^^^^^^^^
+> 60 |         }
+     | ^^^^^^^^^^^^^
+> 61 |     };
+     | ^^^^^^^ `fetchInitialLastId` is declared here
+  62 |
+  63 |     const fetchNotifications = async () => {
+  64 |         try {                                                                                                                        react-hooks/immutability
+  38:48  error    Error: Cannot access variable before it is declared
+
+`fetchNotifications` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  36 |             // Set up polling (every 10 seconds)
+  37 |             console.log("NotificationManager: Starting polling...");
+> 38 |             pollInterval.current = setInterval(fetchNotifications, 10000);
+     |                                                ^^^^^^^^^^^^^^^^^^ `fetchNotifications` accessed before it is declared
+  39 |
+  40 |             return () => {
+  41 |                 console.log("NotificationManager: Stopping polling...");
+
+  61 |     };
+  62 |
+> 63 |     const fetchNotifications = async () => {
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 64 |         try {
+     | ^^^^^^^^^^^^^
+> 65 |             console.log("NotificationManager: Polling for new notifications...");
+     …
+     | ^^^^^^^^^^^^^
+> 87 |         }
+     | ^^^^^^^^^^^^^
+> 88 |     };
+     | ^^^^^^^ `fetchNotifications` is declared here
+  89 |
+  90 |     const playNotificationSound = () => {
+  91 |         audioRef.current.play().catch(err => {  react-hooks/immutability
+  45:8   warning  React Hook useEffect has a missing dependency: 'fetchNotifications'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             react-hooks/exhaustive-deps
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/context/AuthContext.jsx
+   2:10  error    'jwtDecode' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         no-unused-vars
+  28:13  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  26 |         const token = localStorage.getItem('access_token');
+  27 |         if (token) {
+> 28 |             fetchProfile().finally(() => setLoading(false));
+     |             ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  29 |         } else {
+  30 |             setLoading(false);
+  31 |         }  react-hooks/set-state-in-effect
+  32:8   warning  React Hook useEffect has a missing dependency: 'fetchProfile'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          react-hooks/exhaustive-deps
+  89:14  error    Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/context/ThemeContext.jsx
+  30:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/ForgotPasswordPage.jsx
+   2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  22:18  error  'err' is defined but never used                                                no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/LandingPage.jsx
+  5:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/LoginPage.jsx
+   2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  24:18  error  'err' is defined but never used                                                no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/MessagingPage.jsx
+    2:10  error    'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                            no-unused-vars
+   38:11  error    'navigate' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                                 no-unused-vars
+   64:12  error    'initialLoadDone' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                          no-unused-vars
+   70:11  error    'pollingRef' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                                                               no-unused-vars
+  166:8   warning  React Hook useCallback has missing dependencies: 'loadConversations' and 'selectedPartner.is_group'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+  174:8   warning  React Hook useEffect has missing dependencies: 'loadContactsAndGroups' and 'loadConversations'. Either include them or remove the dependency array       react-hooks/exhaustive-deps
+  205:8   warning  React Hook useEffect has a missing dependency: 'selectedPartner.is_group'. Either include it or remove the dependency array                              react-hooks/exhaustive-deps
+  207:44  warning  React Hook useEffect has a missing dependency: 'scrollToBottom'. Either include it or remove the dependency array                                        react-hooks/exhaustive-deps
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/NotFoundPage.jsx
+   3:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        no-unused-vars
+  85:36  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  83 |                         animate={{
+  84 |                             y: [0, -100],
+> 85 |                             x: [0, Math.random() * 50 - 25],
+     |                                    ^^^^^^^^^^^^^ Cannot call impure function
+  86 |                             opacity: [0, 0.3, 0]
+  87 |                         }}
+  88 |                         transition={{                                                          react-hooks/purity
+  89:43  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  87 |                         }}
+  88 |                         transition={{
+> 89 |                             duration: 5 + Math.random() * 5,
+     |                                           ^^^^^^^^^^^^^ Cannot call impure function
+  90 |                             repeat: Infinity,
+  91 |                             delay: Math.random() * 5,
+  92 |                             ease: "linear"                                  react-hooks/purity
+  91:36  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  89 |                             duration: 5 + Math.random() * 5,
+  90 |                             repeat: Infinity,
+> 91 |                             delay: Math.random() * 5,
+     |                                    ^^^^^^^^^^^^^ Cannot call impure function
+  92 |                             ease: "linear"
+  93 |                         }}
+  94 |                         className="absolute h-2 w-2 bg-sky-300 rounded-full"  react-hooks/purity
+  96:38  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  94 |                         className="absolute h-2 w-2 bg-sky-300 rounded-full"
+  95 |                         style={{
+> 96 |                             left: `${Math.random() * 100}%`,
+     |                                      ^^^^^^^^^^^^^ Cannot call impure function
+  97 |                             bottom: "-20px"
+  98 |                         }}
+  99 |                     />                                           react-hooks/purity
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/ProfilePage.jsx
+    2:10  error    'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u                                no-unused-vars
+   15:23  error    'setIsLoading' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u                 no-unused-vars
+   72:8   warning  React Hook useEffect has a missing dependency: 'API_BASE'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  106:18  error    'err' is defined but never used                                                                              no-unused-vars
+  118:18  error    'err' is defined but never used                                                                              no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/RegisterPage.jsx
+  2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/SearchPage.jsx
+  2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/StudentDashboard.jsx
+  2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/TeacherDashboard.jsx
+    2:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u             no-unused-vars
+   41:12  error  'subjects' is assigned a value but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+  106:22  error  'err' is defined but never used                                                           no-unused-vars
+  106:27  error  Empty block statement                                                                     no-empty
+  113:22  error  'err' is defined but never used                                                           no-unused-vars
+  113:27  error  Empty block statement                                                                     no-empty
+
+/home/dumping/Documents/projet/TutorFlow/frontend/src/pages/VirtualClassroomPage.jsx
+  3:10  error  'motion' is defined but never used. Allowed unused vars must match /^[A-Z_]/u  no-unused-vars
+
+✖ 56 problems (49 errors, 7 warnings)
+
