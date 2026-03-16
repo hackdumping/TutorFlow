@@ -56,9 +56,9 @@ const Navbar = () => {
                 // Teachers: only new_booking
                 const filtered = res.data.filter(n => {
                     if (user.role === 'student') {
-                        return n.type === 'booking_confirmed' || n.type === 'booking_cancelled';
+                        return n.type === 'booking_confirmed' || n.type === 'booking_cancelled' || n.type === 'new_booking' || n.type === 'message';
                     } else if (user.role === 'teacher') {
-                        return n.type === 'new_booking';
+                        return n.type === 'new_booking' || n.type === 'message';
                     }
                     return false;
                 });
@@ -197,25 +197,43 @@ const Navbar = () => {
                                                             initial={{ opacity: 0, scale: 0.95, y: 10 }}
                                                             animate={{ opacity: 1, scale: 1, y: 0 }}
                                                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                            className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-20"
+                                                            className="absolute top-full left-0 md:left-auto md:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-20 origin-top-left md:origin-top-right"
                                                         >
                                                             <div className="p-4 border-b border-slate-50 flex items-center justify-between">
                                                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">Notifications</span>
-                                                                {unreadNotificationsCount > 0 && (
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            try {
-                                                                                await api.patch('notifications/mark_all_read/');
-                                                                                setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-                                                                                setUnreadNotificationsCount(0);
-                                                                            } catch (e) {
-                                                                                console.error(e);
-                                                                            }
-                                                                        }}
-                                                                        className="text-[9px] font-bold text-sky-600 hover:underline"
-                                                                    >
-                                                                        Tout marquer comme lu
-                                                                    </button>
+                                                                {notifications.length > 0 && (
+                                                                    <div className="flex items-center gap-3">
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    await api.patch('notifications/mark_all_read/');
+                                                                                    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                                                                                    setUnreadNotificationsCount(0);
+                                                                                } catch (e) {
+                                                                                    console.error(e);
+                                                                                }
+                                                                            }}
+                                                                            className="text-[9px] font-bold text-sky-600 hover:underline"
+                                                                        >
+                                                                            Tout lu
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                if (window.confirm('Supprimer toutes les notifications ?')) {
+                                                                                    try {
+                                                                                        await api.delete('notifications/delete_all/');
+                                                                                        setNotifications([]);
+                                                                                        setUnreadNotificationsCount(0);
+                                                                                    } catch (e) {
+                                                                                        console.error(e);
+                                                                                    }
+                                                                                }
+                                                                            }}
+                                                                            className="text-[9px] font-bold text-red-500 hover:underline"
+                                                                        >
+                                                                            Supprimer
+                                                                        </button>
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                             <div className="max-h-[400px] overflow-y-auto">

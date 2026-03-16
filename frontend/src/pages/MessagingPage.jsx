@@ -899,7 +899,7 @@ const MessagingPage = () => {
                             </div>
 
                             {/* Input Area */}
-                            <div className="bg-white border-t border-slate-200 px-3 py-3 relative z-10">
+                            <div className="bg-white border-t border-slate-200 p-2 sm:p-3 relative z-10">
                                 {attachment && (
                                     <div className="absolute bottom-full left-0 w-full p-3 bg-white border-t border-slate-200 shadow-lg flex items-center justify-between z-20">
                                         <div className="flex items-center gap-3 overflow-hidden">
@@ -968,17 +968,17 @@ const MessagingPage = () => {
                                     </AnimatePresence>
                                 </div>
 
-                                <form onSubmit={sendMessage} className="flex items-center gap-1 sm:gap-2">
+                                <form onSubmit={sendMessage} className="flex items-end gap-1.5 sm:gap-3">
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setShowEmojiPicker(!showEmojiPicker);
                                             setShowStickers(false);
                                         }}
-                                        className={`p-2.5 rounded-full transition-colors shrink-0 ${showEmojiPicker ? 'bg-sky-50 text-sky-600' : 'text-slate-400 hover:text-sky-600 hover:bg-slate-100'}`}
+                                        className={`p-1.5 sm:p-2.5 rounded-full transition-colors shrink-0 ${showEmojiPicker ? 'bg-sky-50 text-sky-600' : 'text-slate-400 hover:text-sky-600 hover:bg-slate-100'}`}
                                         title="Emojis"
                                     >
-                                        <Smile className="w-6 h-6" />
+                                        <Smile className="w-5 h-5 sm:w-6 sm:h-6" />
                                     </button>
 
                                     <button
@@ -987,19 +987,19 @@ const MessagingPage = () => {
                                             setShowStickers(!showStickers);
                                             setShowEmojiPicker(false);
                                         }}
-                                        className={`p-2.5 rounded-full transition-colors shrink-0 ${showStickers ? 'bg-sky-50 text-sky-600' : 'text-slate-400 hover:text-sky-600 hover:bg-slate-100'}`}
+                                        className={`p-1.5 sm:p-2.5 rounded-full transition-colors shrink-0 ${showStickers ? 'bg-sky-50 text-sky-600' : 'text-slate-400 hover:text-sky-600 hover:bg-slate-100'}`}
                                         title="Stickers"
                                     >
-                                        <Sticker className="w-6 h-6" />
+                                        <Sticker className="w-5 h-5 sm:w-6 sm:h-6" />
                                     </button>
 
                                     <button
                                         type="button"
                                         onClick={() => fileInputRef.current?.click()}
-                                        className="p-2.5 text-slate-400 hover:text-sky-600 hover:bg-slate-100 rounded-full transition-colors shrink-0"
+                                        className="p-1.5 sm:p-2.5 text-slate-400 hover:text-sky-600 hover:bg-slate-100 rounded-full transition-colors shrink-0"
                                         title="Joindre un fichier"
                                     >
-                                        <Paperclip className="w-6 h-6" />
+                                        <Paperclip className="w-5 h-5 sm:w-6 sm:h-6" />
                                     </button>
 
                                     <input
@@ -1014,7 +1014,7 @@ const MessagingPage = () => {
                                         }}
                                     />
 
-                                    <div className="flex-1 bg-slate-100 rounded-2xl flex items-center px-4 py-2.5">
+                                    <div className="flex-1 bg-slate-100 rounded-xl sm:rounded-2xl flex items-center px-3 py-2 sm:px-4 sm:py-2.5">
                                         <input
                                             ref={inputRef}
                                             type="text"
@@ -1025,19 +1025,19 @@ const MessagingPage = () => {
                                                 setShowEmojiPicker(false);
                                                 setShowStickers(false);
                                             }}
-                                            className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none"
+                                            className="flex-1 bg-transparent text-[13px] sm:text-sm text-slate-700 placeholder:text-slate-400 outline-none w-full"
                                         />
                                     </div>
 
                                     <button
                                         type="submit"
                                         disabled={(!newMessage.trim() && !attachment) || sending}
-                                        className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 transition-all ${(newMessage.trim() || attachment)
+                                        className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center shrink-0 transition-all ${(newMessage.trim() || attachment)
                                             ? 'bg-sky-600 text-white hover:bg-sky-700 shadow-lg shadow-sky-100'
                                             : 'bg-slate-100 text-slate-400'
                                             } disabled:opacity-50 active:scale-95`}
                                     >
-                                        {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                                        {sending ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
                                     </button>
                                 </form>
                             </div>

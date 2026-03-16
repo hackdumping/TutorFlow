@@ -42,6 +42,9 @@ const TeacherDashboard = () => {
     const [isCreatingSession, setIsCreatingSession] = useState(false);
     const [studentSearch, setStudentSearch] = useState({ name: '', city: '', country: '' });
     const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+    const [sessionCreated, setSessionCreated] = useState(false);
+    const [notifications, setNotifications] = useState([]);
+    const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
     const filteredStudents = students.filter(s => {
         const matchesName = `${s.first_name} ${s.last_name}`.toLowerCase().includes(studentSearch.name.toLowerCase());
@@ -119,6 +122,7 @@ const TeacherDashboard = () => {
                 const res = await api.get('notifications/');
                 // ONLY show new bookings for teachers on the dashboard bell
                 const filtered = res.data.filter(n => n.type === 'new_booking');
+                setNotifications(filtered);
                 setUnreadNotificationsCount(filtered.filter(n => !n.is_read).length);
             } catch (err) { }
         };
@@ -164,10 +168,10 @@ const TeacherDashboard = () => {
             await api.post('bookings/', {
                 ...newSessionData
             });
+            setSessionCreated(true);
             // Refresh bookings
             const response = await api.get('bookings/');
             setBookings(response.data);
-            setShowNewSessionModal(false);
             // Reset form
             setNewSessionData({
                 student: '',
@@ -199,7 +203,7 @@ const TeacherDashboard = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-100/50 text-slate-900 font-sans selection:bg-sky-100">
+        <div className="min-h-screen bg-slate-100/50 text-slate-900 font-sans selection:bg-sky-100 overflow-x-hidden">
             {/* Mobile Sidebar Overlay (Premium Independence) */}
             <AnimatePresence>
                 {!isDesktop && isSidebarOpen && (
@@ -248,7 +252,8 @@ const TeacherDashboard = () => {
                                         { name: 'Dashboard', icon: LayoutDashboard, handler: () => setActiveTab('overview') },
                                         { name: 'Cours', icon: BookOpen, handler: () => setActiveTab('schedule') },
                                         { name: 'Messages', icon: MessageSquare, handler: () => navigate('/messages') },
-                                        { name: 'Profil', icon: User, handler: () => navigate('/profile') }
+                                        { name: 'Profil', icon: User, handler: () => navigate('/profile') },
+                                        { name: 'Revenus', icon: PieChart, handler: () => setActiveTab('revenue') }
                                     ].map((item) => (
                                         <button
                                             key={item.name}
@@ -400,19 +405,130 @@ const TeacherDashboard = () => {
                                 <p className="text-slate-500 font-medium italic">Analysez votre performance et gérez vos élèves en temps réel.</p>
                             </div>
                             <div className="flex items-center gap-4">
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
+                                        className={`p-4 rounded-2xl border border-slate-100 relative group transition-all ${showNotificationsDropdown ? 'bg-sky-50 border-sky-100 text-sky-600' : 'bg-white text-slate-400 hover:text-sky-600 hover:border-sky-100 hover:bg-sky-50'}`}
+                                    >
+                                        <Bell className={`w-6 h-6 transition-colors ${showNotificationsDropdown ? 'text-sky-600' : 'text-slate-400 group-hover:text-sky-600'}`} />
+                                        {unreadNotificationsCount > 0 && (
+                                            <span className="absolute top-4 right-4 w-3 h-3 bg-red-500 rounded-full border-2 border-white ring-2 ring-red-100 flex items-center justify-center text-[7px] text-white font-bold">
+                                                {unreadNotificationsCount}
+                                            </span>
+                                        )}
+                                    </button>
+
+                                    <AnimatePresence>
+                                        {showNotificationsDropdown && (
+                                            <>
+                                                <motion.div
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                    onClick={() => setShowNotificationsDropdown(false)}
+                                                    className="fixed inset-0 z-[160]"
+                                                />
+                                                <motion.div
+                                                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                    className="absolute top-full left-0 md:left-auto md:right-0 mt-4 w-[calc(100vw-3rem)] sm:w-80 bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden z-[170] origin-top-left md:origin-top-right"
+                                                >
+                                                    <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">Notifications</span>
+                                                        {notifications.length > 0 && (
+                                                            <div className="flex items-center gap-3">
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            await api.patch('notifications/mark_all_read/');
+                                                                            setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                                                                            setUnreadNotificationsCount(0);
+                                                                        } catch (e) {
+                                                                            console.error(e);
+                                                                        }
+                                                                    }}
+                                                                    className="text-[9px] font-bold text-sky-600 hover:underline"
+                                                                >
+                                                                    Tout lu
+                                                                </button>
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        if (window.confirm('Supprimer toutes les notifications ?')) {
+                                                                            try {
+                                                                                await api.delete('notifications/delete_all/');
+                                                                                setNotifications([]);
+                                                                                setUnreadNotificationsCount(0);
+                                                                            } catch (e) {
+                                                                                console.error(e);
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                    className="text-[9px] font-bold text-red-500 hover:underline"
+                                                                >
+                                                                    Supprimer
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                                                        {notifications.length === 0 ? (
+                                                            <div className="p-12 text-center">
+                                                                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                                                                    <Bell className="w-8 h-8 text-slate-200" />
+                                                                </div>
+                                                                <p className="text-xs text-slate-400 font-medium italic">Aucun nouveau cours programmé.</p>
+                                                            </div>
+                                                        ) : (
+                                                            notifications.map((notif) => (
+                                                                <button
+                                                                    key={notif.id}
+                                                                    onClick={async () => {
+                                                                        if (!notif.is_read) {
+                                                                            try {
+                                                                                await api.patch(`notifications/${notif.id}/mark_read/`);
+                                                                                setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+                                                                                setUnreadNotificationsCount(prev => Math.max(0, prev - 1));
+                                                                            } catch (e) {
+                                                                                console.error(e);
+                                                                            }
+                                                                        }
+                                                                        setShowNotificationsDropdown(false);
+                                                                        // For teachers, new_booking means checking the dashboard
+                                                                        if (notif.type === 'new_booking') {
+                                                                            setActiveTab('schedule');
+                                                                        }
+                                                                    }}
+                                                                    className={`w-full p-6 flex items-start gap-4 hover:bg-slate-50 transition-all text-left border-b border-slate-50/50 last:border-0 ${!notif.is_read ? 'bg-sky-50/30' : ''}`}
+                                                                >
+                                                                    <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center shadow-sm ${notif.type === 'new_booking' ? 'bg-amber-100 text-amber-600' : 'bg-sky-100 text-sky-600'}`}>
+                                                                        {notif.type === 'new_booking' ? <Calendar className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <p className="text-[11px] font-black text-slate-900 leading-tight mb-1 uppercase tracking-tight">{notif.title}</p>
+                                                                        <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed font-medium">{notif.content}</p>
+                                                                        <p className="text-[9px] text-slate-400 mt-2 font-bold flex items-center gap-1.5">
+                                                                            <Clock className="w-3 h-3" />
+                                                                            {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                        </p>
+                                                                    </div>
+                                                                    {!notif.is_read && (
+                                                                        <div className="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0 mt-1 shadow-[0_0_10px_rgba(14,165,233,0.5)]"></div>
+                                                                    )}
+                                                                </button>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </motion.div>
+                                            </>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
                                 <button
-                                    onClick={() => navigate('/student-dashboard' /* Fallback or just stay */)}
-                                    className="p-4 bg-white rounded-2xl border border-slate-100 relative group"
-                                >
-                                    <Bell className="w-6 h-6 text-slate-400 group-hover:text-sky-600 transition-colors" />
-                                    {unreadNotificationsCount > 0 && (
-                                        <span className="absolute top-4 right-4 w-3 h-3 bg-red-500 rounded-full border-2 border-white ring-2 ring-red-100 flex items-center justify-center text-[7px] text-white font-bold">
-                                            {unreadNotificationsCount}
-                                        </span>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => setShowNewSessionModal(true)}
+                                    onClick={() => {
+                                        setSessionCreated(false);
+                                        setShowNewSessionModal(true);
+                                    }}
                                     className="px-8 py-4 bg-sky-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-sky-100 hover:bg-sky-500 transition-colors flex items-center gap-3 active:scale-95"
                                 >
                                     <Plus className="w-4 h-4" /> Nouvelle Session
@@ -671,137 +787,159 @@ border-emerald-100">
                                 <p className="text-sky-400 text-[10px] font-black uppercase tracking-[0.2em]">Créez un nouvel engagement avec votre élève.</p>
                             </div>
 
-                            <form onSubmit={handleCreateSession} className="p-8 space-y-6">
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Trouver l'élève</label>
-                                        <div className="grid grid-cols-3 gap-2 mb-3">
-                                            <input
-                                                type="text"
-                                                placeholder="Nom..."
-                                                value={studentSearch.name}
-                                                onChange={(e) => setStudentSearch({ ...studentSearch, name: e.target.value })}
-                                                className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold focus:border-sky-500 outline-none"
-                                            />
-                                            <input
-                                                type="text"
-                                                placeholder="Ville..."
-                                                value={studentSearch.city}
-                                                onChange={(e) => setStudentSearch({ ...studentSearch, city: e.target.value })}
-                                                className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold focus:border-sky-500 outline-none"
-                                            />
-                                            <input
-                                                type="text"
-                                                placeholder="Pays..."
-                                                value={studentSearch.country}
-                                                onChange={(e) => setStudentSearch({ ...studentSearch, country: e.target.value })}
-                                                className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold focus:border-sky-500 outline-none"
-                                            />
-                                        </div>
-                                        <select
-                                            required
-                                            value={newSessionData.student}
-                                            onChange={(e) => setNewSessionData({ ...newSessionData, student: e.target.value })}
-                                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm appearance-none transition-all"
-                                        >
-                                            <option value="">
-                                                {studentSearch.name || studentSearch.city || studentSearch.country
-                                                    ? `Résultats (${filteredStudents.length})...`
-                                                    : 'Sélectionner un élève...'
-                                                }
-                                            </option>
-                                            {filteredStudents.map(s => (
-                                                <option key={s.id} value={s.id}>
-                                                    {s.first_name} {s.last_name} ({s.city || '???'}, {s.country || '???'})
-                                                </option>
-                                            ))}
-                                        </select>
+                            {sessionCreated ? (
+                                <div className="p-12 text-center space-y-8">
+                                    <motion.div
+                                        initial={{ scale: 0, rotate: -45 }}
+                                        animate={{ scale: 1, rotate: 0 }}
+                                        className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-inner border border-emerald-100"
+                                    >
+                                        <CheckCircle className="w-12 h-12" />
+                                    </motion.div>
+                                    <div className="space-y-3">
+                                        <h3 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">Session Confirmée</h3>
+                                        <p className="text-slate-500 font-medium italic">Votre élève a été notifié et la session est ajoutée à votre agenda.</p>
                                     </div>
-
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Matière</label>
-                                        <select
-                                            required
-                                            value={newSessionData.subject}
-                                            onChange={(e) => setNewSessionData({ ...newSessionData, subject: e.target.value })}
-                                            className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm appearance-none transition-all"
-                                        >
-                                            <option value="">Sélectionner la matière...</option>
-                                            {teacherProfile?.subjects?.map(sub => (
-                                                <option key={sub.id} value={sub.id}>
-                                                    {sub.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => { setShowNewSessionModal(false); setSessionCreated(false); }}
+                                        className="w-full py-5 bg-slate-950 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-slate-900/10 hover:bg-sky-600 transition-all active:scale-95"
+                                    >
+                                        Terminer
+                                    </button>
+                                </div>
+                            ) : (
+                                <form onSubmit={handleCreateSession} className="p-8 space-y-6">
+                                    <div className="space-y-4">
                                         <div>
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Durée (Heures)</label>
-                                            <input
-                                                type="number"
-                                                step="0.5"
-                                                min="0.5"
-                                                required
-                                                value={newSessionData.duration_hours}
-                                                onChange={(e) => setNewSessionData({ ...newSessionData, duration_hours: parseFloat(e.target.value) })}
-                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Format</label>
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Trouver l'élève</label>
+                                            <div className="grid grid-cols-3 gap-2 mb-3">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Nom..."
+                                                    value={studentSearch.name}
+                                                    onChange={(e) => setStudentSearch({ ...studentSearch, name: e.target.value })}
+                                                    className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold focus:border-sky-500 outline-none"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Ville..."
+                                                    value={studentSearch.city}
+                                                    onChange={(e) => setStudentSearch({ ...studentSearch, city: e.target.value })}
+                                                    className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold focus:border-sky-500 outline-none"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Pays..."
+                                                    value={studentSearch.country}
+                                                    onChange={(e) => setStudentSearch({ ...studentSearch, country: e.target.value })}
+                                                    className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold focus:border-sky-500 outline-none"
+                                                />
+                                            </div>
                                             <select
-                                                value={newSessionData.course_type}
-                                                onChange={(e) => setNewSessionData({ ...newSessionData, course_type: e.target.value })}
-                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm appearance-none"
+                                                required
+                                                value={newSessionData.student}
+                                                onChange={(e) => setNewSessionData({ ...newSessionData, student: e.target.value })}
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm appearance-none transition-all"
                                             >
-                                                <option value="online">En ligne</option>
-                                                <option value="in_person">Présentiel</option>
+                                                <option value="">
+                                                    {studentSearch.name || studentSearch.city || studentSearch.country
+                                                        ? `Résultats (${filteredStudents.length})...`
+                                                        : 'Sélectionner un élève...'
+                                                    }
+                                                </option>
+                                                {filteredStudents.map(s => (
+                                                    <option key={s.id} value={s.id}>
+                                                        {s.first_name} {s.last_name} ({s.city || '???'}, {s.country || '???'})
+                                                    </option>
+                                                ))}
                                             </select>
                                         </div>
+
+                                        <div>
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Matière</label>
+                                            <select
+                                                required
+                                                value={newSessionData.subject}
+                                                onChange={(e) => setNewSessionData({ ...newSessionData, subject: e.target.value })}
+                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm appearance-none transition-all"
+                                            >
+                                                <option value="">Sélectionner la matière...</option>
+                                                {teacherProfile?.subjects?.map(sub => (
+                                                    <option key={sub.id} value={sub.id}>
+                                                        {sub.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Durée (Heures)</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.5"
+                                                    min="0.5"
+                                                    required
+                                                    value={newSessionData.duration_hours}
+                                                    onChange={(e) => setNewSessionData({ ...newSessionData, duration_hours: parseFloat(e.target.value) })}
+                                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Format</label>
+                                                <select
+                                                    value={newSessionData.course_type}
+                                                    onChange={(e) => setNewSessionData({ ...newSessionData, course_type: e.target.value })}
+                                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm appearance-none"
+                                                >
+                                                    <option value="online">En ligne</option>
+                                                    <option value="in_person">Présentiel</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Date</label>
+                                                <input
+                                                    type="date"
+                                                    required
+                                                    value={newSessionData.date}
+                                                    onChange={(e) => setNewSessionData({ ...newSessionData, date: e.target.value })}
+                                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Heure</label>
+                                                <input
+                                                    type="time"
+                                                    required
+                                                    value={newSessionData.time}
+                                                    onChange={(e) => setNewSessionData({ ...newSessionData, time: e.target.value })}
+                                                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm"
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Date</label>
-                                            <input
-                                                type="date"
-                                                required
-                                                value={newSessionData.date}
-                                                onChange={(e) => setNewSessionData({ ...newSessionData, date: e.target.value })}
-                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Heure</label>
-                                            <input
-                                                type="time"
-                                                required
-                                                value={newSessionData.time}
-                                                onChange={(e) => setNewSessionData({ ...newSessionData, time: e.target.value })}
-                                                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-sky-500 outline-none font-bold text-sm"
-                                            />
-                                        </div>
+                                    <div className="pt-4 flex gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setShowNewSessionModal(false); setSessionCreated(false); }}
+                                            className="flex-1 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-slate-600 transition-colors"
+                                        >
+                                            Annuler
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={isCreatingSession}
+                                            className="flex-1 py-4 bg-sky-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-sky-100 hover:bg-sky-500 transition-all disabled:opacity-50 active:scale-95"
+                                        >
+                                            {isCreatingSession ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirmer la séance'}
+                                        </button>
                                     </div>
-                                </div>
-
-                                <div className="pt-4 flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowNewSessionModal(false)}
-                                        className="flex-1 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-slate-600 transition-colors"
-                                    >
-                                        Annuler
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isCreatingSession}
-                                        className="flex-1 py-4 bg-sky-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-sky-100 hover:bg-sky-500 transition-all disabled:opacity-50 active:scale-95"
-                                    >
-                                        {isCreatingSession ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Confirmer la séance'}
-                                    </button>
-                                </div>
-                            </form>
+                                </form>
+                            )}
                         </motion.div>
                     </div>
                 )}

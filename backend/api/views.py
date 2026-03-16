@@ -24,10 +24,12 @@ class TeacherProfileFilter(dj_filters.FilterSet):
     max_rate = dj_filters.NumberFilter(field_name="hourly_rate", lookup_expr='lte')
     subject = dj_filters.NumberFilter(field_name="subjects__id")
     level = dj_filters.NumberFilter(field_name="levels__id")
+    country = dj_filters.CharFilter(field_name="user__country", lookup_expr='icontains')
+    city = dj_filters.CharFilter(field_name="user__city", lookup_expr='icontains')
 
     class Meta:
         model = TeacherProfile
-        fields = ['is_certified', 'subject', 'level', 'min_rate', 'max_rate']
+        fields = ['is_certified', 'subject', 'level', 'min_rate', 'max_rate', 'country', 'city']
 
 class TeacherProfileViewSet(viewsets.ModelViewSet):
     """Access to teacher profiles. Read for all, update for the teacher themselves."""
@@ -422,3 +424,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
     def mark_all_read(self, request):
         Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
         return Response({'status': 'All notifications marked as read'})
+    @action(detail=False, methods=['delete'])
+    def delete_all(self, request):
+        Notification.objects.filter(user=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

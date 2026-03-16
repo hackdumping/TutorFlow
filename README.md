@@ -91,6 +91,38 @@ Le projet est divisé en deux parties : le Backend (API) et le Frontend (Interfa
 
 4. Le terminal vous affichera l'URL locale à ouvrir dans votre navigateur (typiquement `http://localhost:5173`). Cliquez sur le lien ou copiez-le dans votre navigateur.
 
+---
+
+## 📱 Tester sur votre Réseau Local (Mobile, autre PC)
+
+Pour tester l'application sur un autre appareil connecté au même réseau Wi-Fi que vous (comme un téléphone portable ou une tablette), suivez ces étapes spécifiques :
+
+**Condition :** Obtenez l'adresse IP locale de votre machine (ex: `192.168.1.166`).
+
+### 1. Configuration du Backend (Django)
+Au lieu de démarrer le serveur avec `python manage.py runserver` (qui n'écoute que sur localhost), vous devez lui dire d'écouter sur toutes les interfaces réseau :
+```bash
+python manage.py runserver 0.0.0.0:8000
+```
+*(Le backend est déjà configuré pour accepter les requêtes de `192.168.1.166` dans `ALLOWED_HOSTS` et `CORS_ALLOWED_ORIGINS` n'inclut que localhost par défaut, mais `CORS_ALLOW_ALL_ORIGINS = True` permet les requêtes locales).*
+
+### 2. Configuration du Frontend (React)
+Le frontend doit savoir où joindre le backend, et il doit lui-même être accessible sur le réseau.
+
+1. Créez un fichier `.env` à la racine du dossier `frontend/` (s'il n'existe pas).
+2. Ajoutez cette ligne en remplaçant par votre adresse IP :
+   ```env
+   VITE_API_BASE_URL=http://192.168.1.166:8000/api/
+   ```
+3. Démarrez Vite avec l'option `--host` pour l'exposer sur votre réseau local :
+   ```bash
+   npm run dev -- --host
+   ```
+
+**Accès :** Sur votre téléphone ou autre ordinateur, ouvrez votre navigateur et tapez : `http://192.168.1.166:5173`. L'application fonctionnera parfaitement et communiquera avec le backend de votre machine principale.
+
+---
+
 🎉 **Félicitations, l'application fonctionne !**
 
 ---

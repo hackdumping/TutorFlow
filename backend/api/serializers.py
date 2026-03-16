@@ -94,6 +94,9 @@ class BookingSerializer(serializers.ModelSerializer):
     subject_details = SubjectSerializer(source='subject', read_only=True)
     student_details = UserSerializer(source='student', read_only=True)
     
+    student = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+    teacher = serializers.PrimaryKeyRelatedField(queryset=TeacherProfile.objects.all(), required=False)
+
     class Meta:
         model = Booking
         fields = '__all__'

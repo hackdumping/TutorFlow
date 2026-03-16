@@ -18,6 +18,9 @@ const StudentDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [filterMode, setFilterMode] = useState('upcoming'); // 'upcoming' or 'history'
+    const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+    const [notifications, setNotifications] = useState([]);
+    const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
     // ... (rest of logic)
     useEffect(() => {
@@ -46,7 +49,30 @@ const StudentDashboard = () => {
                 setLoading(false);
             }
         };
+
+        const fetchNotifications = async () => {
+            try {
+                const res = await api.get('notifications/');
+                // Students see booking status changes (confirmed, cancelled) and new bookings from teachers
+                const filtered = res.data.filter(n =>
+                    n.type === 'booking_confirmed' || n.type === 'booking_cancelled' || n.type === 'new_booking'
+                );
+                setNotifications(filtered);
+                setUnreadNotificationsCount(filtered.filter(n => !n.is_read).length);
+            } catch (err) {
+                console.error("Error fetching notifications");
+            }
+        };
+
         fetchBookings();
+        fetchNotifications();
+
+        const interval = setInterval(() => {
+            fetchBookings();
+            fetchNotifications();
+        }, 15000);
+
+        return () => clearInterval(interval);
     }, []);
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -146,7 +172,7 @@ const StudentDashboard = () => {
                     </button>
                 </div>
 
-                <div className="flex flex-col lg:flex-row gap-12 items-start relative">
+                <div className="flex flex-col lg:flex-row gap-12 lg:items-start relative">
                     {/* Desktop Sidebar */}
                     <aside className="hidden lg:block w-80 sticky top-32">
                         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm text-center relative overflow-hidden group">
@@ -198,7 +224,7 @@ const StudentDashboard = () => {
                     </aside>
 
                     {/* Dashboard Content */}
-                    <div className="flex-1 space-y-12">
+                    <div className="flex-1 space-y-12 overflow-x-hidden">
                         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-12">
                             <div>
                                 <div className="flex items-center gap-4 mb-4">
@@ -211,10 +237,132 @@ const StudentDashboard = () => {
                                 <p className="text-slate-500 font-medium italic">Bienvenue dans votre espace d'excellence.</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm relative hover:bg-slate-50 transition-colors">
-                                    <Bell className="w-5 h-5 text-slate-400" />
-                                    <span className="absolute top-4 right-4 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
-                                </button>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
+                                        className={`p-4 rounded-2xl border border-slate-200 shadow-sm relative hover:bg-slate-50 transition-all ${showNotificationsDropdown ? 'bg-sky-50 border-sky-100 text-sky-600' : 'bg-white text-slate-400'}`}
+                                    >
+                                        <Bell className={`w-5 h-5 transition-colors ${showNotificationsDropdown ? 'text-sky-600' : 'text-slate-400'}`} />
+                                        {unreadNotificationsCount > 0 && (
+                                            <span className="absolute top-4 right-4 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+                                        )}
+                                    </button>
+
+                                    <AnimatePresence>
+                                        {showNotificationsDropdown && (
+                                            <>
+                                                <motion.div
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                    onClick={() => setShowNotificationsDropdown(false)}
+                                                    className="fixed inset-0 z-[160]"
+                                                />
+                                                <motion.div
+                                                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                    className="absolute top-full left-0 md:left-auto md:right-0 mt-4 w-[calc(100vw-3rem)] sm:w-[450px] bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden z-[170] origin-top-left md:origin-top-right"
+                                                >
+                                                    <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">Notifications</span>
+                                                        {notifications.length > 0 && (
+                                                            <div className="flex items-center gap-3">
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            await api.patch('notifications/mark_all_read/');
+                                                                            setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                                                                            setUnreadNotificationsCount(0);
+                                                                        } catch (e) {
+                                                                            console.error(e);
+                                                                        }
+                                                                    }}
+                                                                    className="text-[9px] font-bold text-sky-600 hover:underline"
+                                                                >
+                                                                    Tout lu
+                                                                </button>
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        if (window.confirm('Supprimer toutes les notifications ?')) {
+                                                                            try {
+                                                                                await api.delete('notifications/delete_all/');
+                                                                                setNotifications([]);
+                                                                                setUnreadNotificationsCount(0);
+                                                                            } catch (e) {
+                                                                                console.error(e);
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                    className="text-[9px] font-bold text-red-500 hover:underline"
+                                                                >
+                                                                    Supprimer
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                                                        {notifications.length === 0 ? (
+                                                            <div className="p-12 text-center">
+                                                                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                                                                    <Bell className="w-8 h-8 text-slate-200" />
+                                                                </div>
+                                                                <p className="text-xs text-slate-400 font-medium italic">Aucune nouvelle notification.</p>
+                                                            </div>
+                                                        ) : (
+                                                            notifications.map((notif) => (
+                                                                <button
+                                                                    key={notif.id}
+                                                                    onClick={async () => {
+                                                                        if (!notif.is_read) {
+                                                                            try {
+                                                                                await api.patch(`notifications/${notif.id}/mark_read/`);
+                                                                                setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n));
+                                                                                setUnreadNotificationsCount(prev => Math.max(0, prev - 1));
+                                                                            } catch (e) {
+                                                                                console.error(e);
+                                                                            }
+                                                                        }
+                                                                        setShowNotificationsDropdown(false);
+                                                                        if (notif.type === 'message') {
+                                                                            navigate('/messages');
+                                                                        } else if (notif.type.startsWith('booking_') || notif.type === 'new_booking') {
+                                                                            setFilterMode('upcoming');
+                                                                        }
+                                                                    }}
+                                                                    className={`w-full p-6 flex items-start gap-4 hover:bg-slate-50 transition-all text-left border-b border-slate-50/50 last:border-0 ${!notif.is_read ? 'bg-sky-50/30' : ''}`}
+                                                                >
+                                                                    <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center shadow-sm ${notif.type === 'message' ? 'bg-blue-100 text-blue-600' :
+                                                                        notif.type === 'booking_confirmed' ? 'bg-emerald-100 text-emerald-600' :
+                                                                            notif.type === 'booking_cancelled' ? 'bg-red-100 text-red-600' :
+                                                                                'bg-amber-100 text-amber-600'
+                                                                        }`}>
+                                                                        {notif.type === 'message' ? <MessageSquare className="w-5 h-5" /> :
+                                                                            (notif.type.includes('booking') || notif.type === 'new_booking') ? <Calendar className="w-5 h-5" /> :
+                                                                                <Bell className="w-5 h-5" />}
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <p className="text-[11px] font-black text-slate-900 leading-tight mb-1 uppercase tracking-tight">{notif.title}</p>
+                                                                        <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed font-medium">{notif.content}</p>
+                                                                        <div className="flex items-center gap-2 mt-2">
+                                                                            <Clock className="w-3 h-3 text-slate-400" />
+                                                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">
+                                                                                {new Date(notif.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                    {!notif.is_read && (
+                                                                        <div className="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0 mt-1 shadow-[0_0_10px_rgba(14,165,233,0.5)]"></div>
+                                                                    )}
+                                                                </button>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </motion.div>
+                                            </>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
                                 <Link to="/tutors" className="px-8 py-4 bg-sky-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-sky-500 transition-all shadow-xl shadow-sky-100 flex items-center gap-2 active:scale-95">
                                     <Search className="w-4 h-4" /> Trouver un Prof
                                 </Link>

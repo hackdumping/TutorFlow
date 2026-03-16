@@ -25,13 +25,14 @@ const BookingModal = ({ teacher, isOpen, onClose }) => {
 
     const totalPrice = Math.round((teacher?.hourly_rate || 0) * bookingData.duration_hours);
 
-    const handleNextStep = () => {
+    const handleNextStep = async () => {
         if (!bookingData.date || !bookingData.time || !bookingData.subject) {
             setError('Veuillez remplir tous les champs');
             return;
         }
         setError('');
-        setStep(2);
+        // NOTE: Bypassing step 2 (payment) for testing
+        await handlePayment();
     };
 
     const handlePayment = async () => {
@@ -275,9 +276,10 @@ const BookingModal = ({ teacher, isOpen, onClose }) => {
 
                             <button
                                 onClick={handleNextStep}
-                                className="w-full py-4 bg-sky-600 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-sky-700 transition-all shadow-lg shadow-sky-100 flex items-center justify-center gap-2"
+                                disabled={isLoading}
+                                className="w-full py-4 bg-sky-600 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-sky-700 transition-all shadow-lg shadow-sky-100 flex items-center justify-center gap-2 disabled:opacity-50"
                             >
-                                Continuer vers le paiement <ArrowRight className="w-4 h-4" />
+                                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Confirmer (Test sans paiement) <ArrowRight className="w-4 h-4" /></>}
                             </button>
                         </div>
                     )}
