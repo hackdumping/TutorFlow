@@ -1,9 +1,10 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Home, ArrowLeft, Ghost } from 'lucide-react';
 
 const NotFoundPage = () => {
+    const navigate = useNavigate();
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 overflow-hidden relative">
             {/* Background decorative elements */}
@@ -66,7 +67,7 @@ const NotFoundPage = () => {
                         Retour à l'accueil
                     </Link>
                     <button
-                        onClick={() => window.history.back()}
+                        onClick={() => navigate(-1)}
                         className="flex items-center gap-2 px-8 py-4 bg-white text-slate-700 border border-slate-200 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-50 transition-all shadow-lg w-full sm:w-auto"
                     >
                         <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />

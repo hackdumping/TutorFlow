@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     User, Mail, Phone, MapPin, Globe,
-    Save, ArrowLeft, Camera, Loader2, CheckCircle2, X, AlertTriangle, Trash2
+    Save, ArrowLeft, Camera, Loader2, CheckCircle2, X, AlertTriangle, Trash2,
+    Plus, BookOpen
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -26,9 +27,11 @@ const ProfilePage = () => {
         teacher_profile: {
             academic_title: 'Mr',
             bio: '',
-            subjects: []
+            subjects: [],
+            custom_subjects: ''
         }
     });
+    const [customSubjectInput, setCustomSubjectInput] = useState('');
     const [allSubjects, setAllSubjects] = useState([]);
     const [profileImage, setProfileImage] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
@@ -55,7 +58,8 @@ const ProfilePage = () => {
                 academic_title: user.teacher_profile?.academic_title || 'Mr',
                 bio: user.teacher_profile?.bio || '',
                 subjects: user.teacher_profile?.subjects?.map(s => typeof s === 'object' ? s.id : s) || [],
-                levels: user.teacher_profile?.levels?.map(l => typeof l === 'object' ? l.id : l) || []
+                levels: user.teacher_profile?.levels?.map(l => typeof l === 'object' ? l.id : l) || [],
+                custom_subjects: user.teacher_profile?.custom_subjects || ''
             } : {}
         });
 
@@ -373,34 +377,117 @@ const ProfilePage = () => {
                                         />
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Matières Enseignées</label>
-                                        <div className="flex flex-wrap gap-2 p-2 bg-slate-50 rounded-2xl min-h-[60px]">
-                                            {allSubjects.map(sub => {
-                                                const isSelected = formData.teacher_profile?.subjects?.includes(sub.id);
-                                                return (
-                                                    <button
-                                                        key={sub.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const current = formData.teacher_profile?.subjects || [];
-                                                            const next = isSelected
-                                                                ? current.filter(id => id !== sub.id)
-                                                                : [...current, sub.id];
-                                                            setFormData({
-                                                                ...formData,
-                                                                teacher_profile: { ...formData.teacher_profile, subjects: next }
-                                                            });
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                                                <BookOpen className="w-3 h-3 text-sky-600" /> Matières Enseignées
+                                            </label>
+                                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Sélectionnez vos spécialités</span>
+                                        </div>
+
+                                        <div className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-100 space-y-6">
+                                            {/* Predefined Subjects Grid */}
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                {allSubjects.map(sub => {
+                                                    const isSelected = formData.teacher_profile?.subjects?.includes(sub.id);
+                                                    return (
+                                                        <button
+                                                            key={sub.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const current = formData.teacher_profile?.subjects || [];
+                                                                const next = isSelected
+                                                                    ? current.filter(id => id !== sub.id)
+                                                                    : [...current, sub.id];
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    teacher_profile: { ...formData.teacher_profile, subjects: next }
+                                                                });
+                                                            }}
+                                                            className={`group relative flex items-center justify-center px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-tight transition-all duration-300 border-2 ${isSelected
+                                                                ? 'bg-sky-600 border-sky-600 text-white shadow-lg shadow-sky-200 scale-[1.02]'
+                                                                : 'bg-white border-slate-100 text-slate-400 hover:border-sky-200 hover:text-sky-600 hover:bg-sky-50/30'
+                                                                }`}
+                                                        >
+                                                            {isSelected && (
+                                                                <motion.div layoutId="select-check" className="absolute -top-1.5 -right-1.5 bg-white text-sky-600 rounded-full p-0.5 shadow-md z-10">
+                                                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                                                </motion.div>
+                                                            )}
+                                                            <span className="truncate">{sub.name}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Custom Subjects Tags */}
+                                            <div className="pt-4 border-t border-slate-100/50">
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Autres matières</label>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2 mb-4">
+                                                    <AnimatePresence mode="popLayout">
+                                                        {(formData.teacher_profile?.custom_subjects?.split(',').filter(s => s.trim()) || []).map((tag, i) => (
+                                                            <motion.span
+                                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                exit={{ opacity: 0, scale: 0.8 }}
+                                                                key={`tag-${i}`}
+                                                                className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-slate-100 rounded-xl text-[10px] font-bold text-slate-700 shadow-sm group/tag hover:border-sky-200 transition-all"
+                                                            >
+                                                                {tag.trim()}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const tags = formData.teacher_profile.custom_subjects.split(',').filter(s => s.trim());
+                                                                        tags.splice(i, 1);
+                                                                        setFormData({
+                                                                            ...formData,
+                                                                            teacher_profile: { ...formData.teacher_profile, custom_subjects: tags.join(',') }
+                                                                        });
+                                                                    }}
+                                                                    className="text-slate-300 hover:text-red-500 transition-colors"
+                                                                >
+                                                                    <X className="w-3 h-3" />
+                                                                </button>
+                                                            </motion.span>
+                                                        ))}
+                                                    </AnimatePresence>
+                                                </div>
+
+                                                <div className="relative group">
+                                                    <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                                                        <Plus className="w-4 h-4 text-sky-600 opacity-40 group-focus-within:opacity-100 transition-opacity" />
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Ajouter une autre matière... (Appuyez sur Entrée)"
+                                                        value={customSubjectInput}
+                                                        onChange={(e) => setCustomSubjectInput(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                const val = customSubjectInput.trim();
+                                                                if (val) {
+                                                                    const current = formData.teacher_profile.custom_subjects || '';
+                                                                    const tags = current.split(',').map(s => s.trim()).filter(s => s);
+                                                                    if (!tags.includes(val)) {
+                                                                        setFormData({
+                                                                            ...formData,
+                                                                            teacher_profile: {
+                                                                                ...formData.teacher_profile,
+                                                                                custom_subjects: tags.length > 0 ? `${current},${val}` : val
+                                                                            }
+                                                                        });
+                                                                    }
+                                                                    setCustomSubjectInput('');
+                                                                }
+                                                            }
                                                         }}
-                                                        className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isSelected
-                                                            ? 'bg-sky-600 text-white shadow-lg'
-                                                            : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-200'
-                                                            }`}
-                                                    >
-                                                        {sub.name}
-                                                    </button>
-                                                );
-                                            })}
+                                                        className="w-full bg-white border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-slate-600 focus:ring-4 focus:ring-sky-100 focus:border-sky-200 outline-none transition-all placeholder:text-[10px] placeholder:uppercase placeholder:tracking-widest placeholder:font-black placeholder:opacity-40"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

@@ -1,9 +1,13 @@
 import React from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { ArrowRight, Star, Play, Award, ShieldCheck, Zap } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 
 const Hero = () => {
+    const { user } = useAuth();
+    const isTeacher = user?.role === 'teacher';
+
     return (
         <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden bg-white">
             {/* Background Decorative Elements */}
@@ -40,12 +44,14 @@ const Hero = () => {
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-5">
-                            <Link
-                                to="/tutors"
-                                className="px-10 py-5 bg-sky-600 text-white font-black uppercase tracking-widest rounded-[2rem] flex items-center justify-center gap-3 hover:bg-sky-700 hover:scale-[1.02] transition-all shadow-2xl shadow-sky-200 active:scale-95"
-                            >
-                                Trouver un Prof <ArrowRight className="w-5 h-5" />
-                            </Link>
+                            {!isTeacher && (
+                                <Link
+                                    to="/tutors"
+                                    className="px-10 py-5 bg-sky-600 text-white font-black uppercase tracking-widest rounded-[2rem] flex items-center justify-center gap-3 hover:bg-sky-700 hover:scale-[1.02] transition-all shadow-2xl shadow-sky-200 active:scale-95"
+                                >
+                                    Trouver un Prof <ArrowRight className="w-5 h-5" />
+                                </Link>
+                            )}
                             <button className="px-10 py-5 bg-white text-slate-900 font-black uppercase tracking-widest rounded-[2rem] border-2 border-slate-100 flex items-center justify-center gap-3 hover:bg-slate-50 transition-all">
                                 <Play className="w-5 h-5 text-sky-600 fill-sky-600" /> Voir la Démo
                             </button>

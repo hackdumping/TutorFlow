@@ -97,7 +97,7 @@ const SearchPage = () => {
         <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans selection:bg-sky-100 relative overflow-x-hidden">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[500px] bg-gradient-to-b from-sky-100/40 to-transparent pointer-events-none rounded-b-full blur-3xl" />
 
-            <main className="max-w-[1400px] mx-auto px-6 lg:px-8 pt-24 pb-32 relative z-10 w-full">
+            <main className="max-w-7xl mx-auto px-6 lg:px-8 pt-24 pb-32 relative z-10 w-full">
                 {/* Mobile Toggle Button */}
                 <div className="lg:hidden fixed bottom-8 right-8 z-[100]">
                     <button
@@ -147,7 +147,7 @@ const SearchPage = () => {
                     </div>
                 </header>
 
-                <div className="flex flex-col lg:flex-row gap-12 lg:items-start relative">
+                <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 lg:items-start relative">
 
                     {/* Mobile Sidebar Overlay (Premium Independence) */}
                     <AnimatePresence>
@@ -391,7 +391,7 @@ const SearchPage = () => {
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-10">
-                                    <div className={`grid gap-10 ${viewType === 'grid' ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'}`}>
+                                    <div className={`grid gap-6 md:gap-10 ${viewType === 'grid' ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'} pb-24`}>
                                         <AnimatePresence mode="popLayout">
                                             {paginatedTeachers.map((teacher) => (
                                                 <motion.div
@@ -400,45 +400,56 @@ const SearchPage = () => {
                                                     animate={{ opacity: 1, y: 0 }}
                                                     exit={{ opacity: 0, y: -20 }}
                                                     key={teacher.id}
-                                                    className={`bg-white p-8 rounded-3xl border border-slate-200/60 hover:border-slate-300 hover:shadow-md transition-all group relative overflow-hidden flex ${viewType === 'list' ? 'flex-col md:flex-row items-stretch gap-8' : 'flex-col'}`}
+                                                    className={`bg-white p-5 md:p-8 rounded-3xl border border-slate-200/60 hover:border-slate-300 hover:shadow-md transition-all group relative overflow-hidden flex ${viewType === 'list' ? 'flex-col md:flex-row items-stretch gap-4 md:gap-8' : 'flex-col'}`}
                                                 >
-                                                    {/* Badge Overlay */}
-                                                    <div className="absolute top-6 right-6 flex flex-col items-end gap-2 z-20">
-                                                        <div className="px-3 py-1.5 bg-amber-50 rounded-xl flex items-center gap-1.5 border border-amber-100">
-                                                            <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                                                            <span className="text-[11px] font-bold text-amber-700 tracking-wider">{teacher.rating}</span>
+                                                    {/* Badge Overlay - Hidden or repositioned on mobile List */}
+                                                    <div className={`absolute top-4 right-4 md:top-6 md:right-6 flex flex-col items-end gap-2 z-20 ${viewType === 'list' ? 'hidden md:flex' : 'flex'}`}>
+                                                        <div className="px-2 md:px-3 py-1 md:py-1.5 bg-amber-50 rounded-xl flex items-center gap-1 md:gap-1.5 border border-amber-100">
+                                                            <Star className="w-3 h-3 md:w-3.5 md:h-3.5 fill-amber-500 text-amber-500" />
+                                                            <span className="text-[10px] md:text-[11px] font-bold text-amber-700 tracking-wider">{teacher.rating}</span>
                                                         </div>
                                                         {teacher.is_certified && (
-                                                            <div className="px-3 py-1.5 bg-sky-50 rounded-xl flex items-center gap-1.5 border border-sky-100">
-                                                                <CheckCircle className="w-3.5 h-3.5 text-sky-600" />
-                                                                <span className="text-[10px] font-bold text-sky-700 tracking-wider uppercase">Certifié</span>
+                                                            <div className="px-2 md:px-3 py-1 md:py-1.5 bg-sky-50 rounded-xl flex items-center gap-1 md:gap-1.5 border border-sky-100">
+                                                                <CheckCircle className="w-3 h-3 md:w-3.5 md:h-3.5 text-sky-600" />
+                                                                <span className="text-[9px] md:text-[10px] font-bold text-sky-700 tracking-wider uppercase">Certifié</span>
                                                             </div>
                                                         )}
                                                     </div>
 
-                                                    <div className={`flex flex-col flex-1 ${viewType === 'list' ? 'justify-between min-w-0 md:pr-12' : ''}`}>
-                                                        <div className="flex gap-6 mb-6 relative z-10">
+                                                    {/* Profile Info Section */}
+                                                    <div className={`flex flex-col flex-1 ${viewType === 'list' ? 'md:justify-between min-w-0 md:pr-12' : ''}`}>
+                                                        {/* Header: Image + Name (Compact on mobile list) */}
+                                                        <div className={`flex gap-4 md:gap-6 mb-4 md:mb-6 relative z-10 ${viewType === 'list' ? 'items-center md:items-start' : 'items-center'}`}>
                                                             <div className="relative shrink-0">
                                                                 <div className="absolute -inset-2 bg-gradient-to-tr from-sky-400 to-indigo-400 rounded-full opacity-0 group-hover:opacity-20 blur-lg transition-opacity"></div>
                                                                 <img
                                                                     src={teacher.user.profile_picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${teacher.user.username}`}
-                                                                    className="w-24 h-24 rounded-full object-cover bg-white p-1 border-2 border-white shadow-md group-hover:scale-105 transition-transform"
+                                                                    className={`${viewType === 'list' ? 'w-16 h-16 md:w-24 md:h-24' : 'w-20 h-20 md:w-24 md:h-24'} rounded-full object-cover bg-white p-1 border-2 border-white shadow-md group-hover:scale-105 transition-transform`}
                                                                     alt=""
                                                                 />
                                                                 {teacher.user.is_online && (
-                                                                    <div className="absolute bottom-1 right-1 w-5 h-5 bg-emerald-500 rounded-full border-4 border-white shadow-sm ring-1 ring-emerald-100 animate-pulse"></div>
+                                                                    <div className="absolute bottom-1 right-1 w-4 h-4 md:w-5 md:h-5 bg-emerald-500 rounded-full border-2 md:border-4 border-white shadow-sm ring-1 ring-emerald-100 animate-pulse"></div>
                                                                 )}
                                                             </div>
                                                             <div className="flex-1 flex flex-col justify-center min-w-0">
-                                                                <h3 className="text-2xl md:text-3xl font-black text-slate-900 truncate tracking-tighter mb-1">
-                                                                    {teacher.academic_title === 'Dr' ? 'Dr.' : teacher.academic_title === 'Pr' ? 'Pr.' : teacher.academic_title === 'Mme' ? 'Mme' : 'M.'} {teacher.user.last_name}
-                                                                </h3>
-                                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                                                                    <span className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                                        <MapPin className="w-3.5 h-3.5 text-sky-600" /> {teacher.user.city || 'CEMAC'}, {teacher.user.country || 'Region'}
+                                                                <div className="flex items-center gap-2">
+                                                                    <h3 className={`${viewType === 'list' ? 'text-lg md:text-3xl' : 'text-xl md:text-3xl'} font-black text-slate-900 truncate tracking-tighter`}>
+                                                                        {teacher.academic_title === 'Dr' ? 'Dr.' : teacher.academic_title === 'Pr' ? 'Pr.' : teacher.academic_title === 'Mme' ? 'Mme' : 'M.'} {teacher.user.last_name}
+                                                                    </h3>
+                                                                    {/* Mobile Rating Badge (List mode only) */}
+                                                                    {viewType === 'list' && (
+                                                                        <div className="md:hidden flex items-center gap-1 text-amber-500">
+                                                                            <Star className="w-3 h-3 fill-amber-500" />
+                                                                            <span className="text-[10px] font-bold">{teacher.rating}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex flex-wrap items-center gap-x-3 md:gap-x-4 gap-y-1 md:gap-y-2 mt-0.5">
+                                                                    <span className="flex items-center gap-1 md:gap-1.5 text-[9px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                                        <MapPin className="w-3 md:w-3.5 md:h-3.5 text-sky-600" /> {teacher.user.city || 'CEMAC'}
                                                                     </span>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="w-1 h-1 bg-slate-200 rounded-full hidden md:block"></div>
+                                                                    <div className="hidden md:flex items-center gap-2">
+                                                                        <div className="w-1 h-1 bg-slate-200 rounded-full"></div>
                                                                         <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-1.5">
                                                                             <Star className="w-3.5 h-3.5 fill-indigo-500" /> {teacher.rating || 'Nouveau'}
                                                                         </span>
@@ -447,61 +458,71 @@ const SearchPage = () => {
                                                             </div>
                                                         </div>
 
-                                                        {/* Info Grid (Experience, Mode, Type) */}
-                                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                                                            <div className="p-3 bg-slate-50/50 rounded-2xl border border-slate-100">
-                                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Expérience</p>
-                                                                <p className="text-xs font-bold text-slate-700">{teacher.experience_years} ans</p>
+                                                        {/* Info Grid (Experience, Mode) - More compact on mobile */}
+                                                        <div className={`grid ${viewType === 'list' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-2 md:grid-cols-3'} gap-2 md:gap-4 mb-4 md:mb-6`}>
+                                                            <div className="p-2 md:p-3 bg-slate-50/50 rounded-xl md:rounded-2xl border border-slate-100 flex flex-col justify-center">
+                                                                <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Expérience</p>
+                                                                <p className="text-[10px] md:text-xs font-bold text-slate-700">{teacher.experience_years} ans</p>
                                                             </div>
-                                                            <div className="p-3 bg-slate-50/50 rounded-2xl border border-slate-100">
-                                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Modalité</p>
-                                                                <p className="text-xs font-bold text-slate-700">{teacher.accepts_online ? 'En ligne' : 'Presentiel'}</p>
+                                                            <div className="p-2 md:p-3 bg-slate-50/50 rounded-xl md:rounded-2xl border border-slate-100 flex flex-col justify-center">
+                                                                <p className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Modalité</p>
+                                                                <p className="text-[10px] md:text-xs font-bold text-slate-700">{teacher.accepts_online ? 'En ligne' : 'Presentiel'}</p>
                                                             </div>
-                                                            <div className="p-3 bg-slate-50/50 rounded-2xl border border-slate-100 col-span-2 md:col-span-1">
+                                                            {/* Hidden Title box on mobile for better space */}
+                                                            <div className="hidden md:block p-3 bg-slate-50/50 rounded-2xl border border-slate-100">
                                                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Titre</p>
                                                                 <p className="text-xs font-bold text-slate-700">{teacher.academic_title}</p>
                                                             </div>
                                                         </div>
 
-                                                        <p className={`text-sm font-medium text-slate-500 line-clamp-3 mb-6 leading-relaxed italic border-l-[3px] border-slate-100 pl-4 ${viewType === 'list' ? 'flex-1' : ''}`}>
+                                                        {/* Bio - Hidden on mobile List for maximum compactness */}
+                                                        <p className={`text-[13px] md:text-sm font-medium text-slate-500 line-clamp-2 md:line-clamp-3 mb-4 md:mb-6 leading-relaxed italic border-l-[3px] border-slate-100 pl-4 ${viewType === 'list' ? 'hidden md:block flex-1' : ''}`}>
                                                             "{teacher.bio}"
                                                         </p>
 
-                                                        <div className="flex flex-wrap gap-2 mb-8 mt-auto relative z-10 transition-transform group-hover:translate-x-1">
-                                                            {teacher.subjects.map(sub => (
-                                                                <span key={sub.id} className="px-4 py-1.5 bg-white text-slate-600 text-[10px] font-bold uppercase tracking-wider rounded-xl border border-slate-200 flex items-center gap-1.5 transition-all hover:border-sky-300 hover:text-sky-600 shadow-sm">
-                                                                    <Book className="w-3 h-3" /> {sub.name}
+                                                        {/* Subjects */}
+                                                        <div className={`flex flex-wrap gap-1.5 md:gap-2 mb-4 md:mb-8 mt-auto relative z-10 transition-transform group-hover:translate-x-1 ${viewType === 'list' ? 'md:flex' : ''}`}>
+                                                            {teacher.subjects.slice(0, isDesktop ? 5 : 2).map((sub, idx) => (
+                                                                <span key={sub.id} className="px-2.5 md:px-4 py-1 md:py-1.5 bg-white text-slate-600 text-[9px] md:text-[10px] font-bold uppercase tracking-wider rounded-lg md:rounded-xl border border-slate-200 flex items-center gap-1 md:gap-1.5 transition-all hover:border-sky-300 hover:text-sky-600 shadow-sm">
+                                                                    <Book className="w-2.5 h-2.5 md:w-3 md:h-3" /> {sub.name}
                                                                 </span>
                                                             ))}
+                                                            {!isDesktop && teacher.subjects.length > 2 && (
+                                                                <span className="px-2.5 py-1 bg-slate-50 text-slate-400 text-[9px] font-bold uppercase tracking-wider rounded-lg border border-slate-100">
+                                                                    +{teacher.subjects.length - 2}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
 
-                                                    <div className={`flex items-center justify-between gap-6 pt-6 border-t border-slate-100 relative z-10 ${viewType === 'list' ? 'md:flex-col md:border-t-0 md:border-l md:pl-8 md:pt-0 md:justify-center md:items-center' : ''}`}>
-                                                        <div className={`flex flex-col ${viewType === 'list' ? 'md:items-center md:text-center shrink-0 min-w-[140px]' : ''}`}>
-                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tarif Horaire</span>
+                                                    {/* Footer Actions */}
+                                                    <div className={`flex items-center justify-between gap-4 md:gap-6 pt-4 md:pt-6 border-t border-slate-100 relative z-10 ${viewType === 'list' ? 'md:flex-col md:border-t-0 md:border-l md:pl-8 md:pt-0 md:justify-center md:items-center' : ''}`}>
+                                                        <div className={`flex flex-col ${viewType === 'list' ? 'md:items-center md:text-center shrink-0 md:min-w-[140px]' : ''}`}>
+                                                            <span className="text-[8px] md:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5 md:mb-1">Tarif Horaire</span>
                                                             <div className="flex items-baseline gap-1">
-                                                                <span className="text-3xl font-bold text-indigo-600 tracking-tight">
+                                                                <span className="text-xl md:text-3xl font-bold text-indigo-600 tracking-tight">
                                                                     {Math.round(teacher.hourly_rate)}
                                                                 </span>
-                                                                <span className="text-[10px] uppercase text-slate-400 font-bold tracking-widest">XAF / h</span>
+                                                                <span className="text-[8px] md:text-[10px] uppercase text-slate-400 font-bold tracking-widest">XAF / h</span>
                                                             </div>
                                                         </div>
-                                                        <div className="flex gap-3 w-full md:w-auto">
+                                                        <div className="flex gap-2 md:gap-3 w-auto">
                                                             <button
                                                                 onClick={() => {
                                                                     setTeacherForBio(teacher);
                                                                     setIsBioModalOpen(true);
                                                                 }}
-                                                                className="flex-1 md:flex-none p-4 bg-slate-50 text-slate-600 rounded-2xl hover:bg-slate-100 transition-all active:scale-95 border border-slate-200 md:hidden flex items-center justify-center"
+                                                                className="p-3 md:p-4 bg-slate-50 text-slate-600 rounded-xl md:rounded-2xl hover:bg-slate-100 transition-all active:scale-95 border border-slate-200 flex items-center justify-center shrink-0"
+                                                                title="Voir la bio"
                                                             >
-                                                                <Menu className="w-5 h-5" />
+                                                                <Menu className="w-4 h-4 md:w-5 md:h-5" />
                                                             </button>
                                                             <button
                                                                 onClick={() => {
                                                                     setSelectedTeacher(teacher);
                                                                     setIsModalOpen(true);
                                                                 }}
-                                                                className="flex-[3] md:flex-none px-8 py-4 bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest rounded-[1.4rem] hover:bg-sky-600 transition-all shadow-xl shadow-slate-900/10 active:scale-95 hover:shadow-sky-100"
+                                                                className="px-5 md:px-8 py-3 md:py-4 bg-slate-900 text-white text-[10px] md:text-[11px] font-black uppercase tracking-widest rounded-xl md:rounded-[1.4rem] hover:bg-sky-600 transition-all shadow-xl shadow-slate-900/5 active:scale-95 hover:shadow-sky-100 whitespace-nowrap"
                                                             >
                                                                 Réserver
                                                             </button>

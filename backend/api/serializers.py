@@ -25,7 +25,7 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = TeacherProfile
-        fields = ('id', 'user', 'academic_title', 'bio', 'experience_years', 'subjects', 'levels', 'hourly_rate', 'is_certified', 'rating', 'accepts_online', 'accepts_in_person', 'subjects_details', 'levels_details')
+        fields = ('id', 'user', 'academic_title', 'bio', 'experience_years', 'subjects', 'levels', 'hourly_rate', 'is_certified', 'rating', 'accepts_online', 'accepts_in_person', 'subjects_details', 'levels_details', 'custom_subjects')
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -100,10 +100,13 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = '__all__'
-        read_only_fields = ('meeting_link', 'meeting_room_id', 'created_at')
+        read_only_fields = (
+            'meeting_link', 'meeting_room_id', 'created_at',
+            'session_started_at', 'session_ended_at', 'actual_duration_minutes',
+            'validation_code', 'validation_code_expires_at', 'is_validated',
+        )
 
     def validate_student(self, value):
-        # Allow student to be null during creation if teacher is creating
         return value
 
 class GroupChatSerializer(serializers.ModelSerializer):
@@ -115,16 +118,29 @@ class GroupChatSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('admin', 'created_at')
 
+class MessageBasicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Message
+        fields = ('id', 'content', 'timestamp', 'sender', 'is_sticker', 'sticker_url', 'file_attachment', 'is_call', 'call_type', 'call_status', 'call_room_id')
+
 class MessageSerializer(serializers.ModelSerializer):
     sender_details = UserSerializer(source='sender', read_only=True)
     receiver_details = UserSerializer(source='receiver', read_only=True)
     group_details = GroupChatSerializer(source='group', read_only=True)
+    reply_to_details = MessageBasicSerializer(source='reply_to', read_only=True)
     is_read = serializers.SerializerMethodField()
+    file_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
         fields = '__all__'
         read_only_fields = ('sender', 'timestamp')
+
+    def get_file_name(self, obj):
+        if obj.file_attachment:
+            import os
+            return os.path.basename(obj.file_attachment.name)
+        return None
 
     def get_is_read(self, obj):
         request = self.context.get('request')

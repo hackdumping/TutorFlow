@@ -13,6 +13,8 @@ import VirtualClassroomPage from './pages/VirtualClassroomPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 import { AuthProvider } from './context/AuthContext';
+import { CallProvider } from './context/CallContext';
+import CallOverlay from './components/CallOverlay';
 import Chatbot from './components/Chatbot';
 import ScrollToTop from './components/ScrollToTop';
 import Navbar from './components/Navbar';
@@ -66,6 +68,7 @@ const AppContent = () => {
       <NotificationManager />
       <Navbar />
       <Chatbot />
+      <CallOverlay />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -100,6 +103,7 @@ const AppContent = () => {
           </ProtectedRoute>
         } />
 
+        <Route path="/404" element={<NotFoundPage />} />
         {/* Catch-all 404 Page */}
         <Route path="*" element={<ErrorBoundary><NotFoundPage /></ErrorBoundary>} />
       </Routes>
@@ -112,7 +116,9 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <Router>
-          <AppContent />
+          <CallProvider>
+            <AppContent />
+          </CallProvider>
         </Router>
       </AuthProvider>
     </ErrorBoundary>

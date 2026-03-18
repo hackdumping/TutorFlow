@@ -3,6 +3,9 @@ from django.contrib.auth.models import AbstractUser
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
 import uuid
+import random
+import string
+import datetime
 
 class User(AbstractUser):
     IS_TEACHER = 'teacher'
@@ -56,6 +59,7 @@ class TeacherProfile(models.Model):
     rating = models.FloatField(default=0.0, validators=[MinValueValidator(0.0), MaxValueValidator(5.0)])
     accepts_online = models.BooleanField(default=True)
     accepts_in_person = models.BooleanField(default=True)
+    custom_subjects = models.CharField(max_length=255, blank=True, default="")
 
 class Booking(models.Model):
     COURSE_TYPE_CHOICES = [
@@ -82,10 +86,59 @@ class Booking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     payment_status = models.CharField(max_length=20, default='unpaid')
 
+    # --- Online session tracking ---
+    session_started_at = models.DateTimeField(null=True, blank=True)
+    session_ended_at = models.DateTimeField(null=True, blank=True)
+    actual_duration_minutes = models.IntegerField(null=True, blank=True)  # computed on end
+
+    # --- In-person validation ---
+    validation_code = models.CharField(max_length=6, null=True, blank=True)
+    validation_code_expires_at = models.DateTimeField(null=True, blank=True)
+    is_validated = models.BooleanField(default=False)
+
     def save(self, *args, **kwargs):
         if self.course_type == 'online' and not self.meeting_link:
             self.meeting_link = f"https://meet.jit.si/tutorflow-{self.meeting_room_id}"
         super().save(*args, **kwargs)
+
+    @property
+    def start_datetime(self):
+        """Combine date and time into a single datetime object."""
+        return timezone.make_aware(datetime.datetime.combine(self.date, self.time))
+
+    @property
+    def end_datetime(self):
+        """Combine date, time and duration into a single datetime object."""
+        return self.start_datetime + datetime.timedelta(hours=self.duration_hours)
+
+    @property
+    def can_generate_validation_code(self):
+        """Can only generate code 10 minutes before the end of the lesson.
+        Increased buffer (15 mins total) to handle client-server clock drift and regional shifts.
+        """
+        now = timezone.now()
+        # 5 minutes before end + 10 min buffer = 15 minutes total
+        window_start = self.end_datetime - datetime.timedelta(minutes=15)
+        return now >= window_start
+
+    @property
+    def is_grace_period_expired(self):
+        """Check if the 24h grace period after the lesson end has passed."""
+        return timezone.now() > (self.end_datetime + datetime.timedelta(hours=24))
+
+    @property
+    def is_expired(self):
+        """Check if the lesson time has passed without being completed or cancelled."""
+        if self.status in ['completed', 'cancelled']:
+            return False
+        return timezone.now() > self.start_datetime
+
+    def generate_validation_code(self):
+        """Generate a fresh 6-digit code valid for 30 minutes."""
+        self.validation_code = ''.join(random.choices(string.digits, k=6))
+        self.validation_code_expires_at = timezone.now() + timezone.timedelta(minutes=30)
+        self.save(update_fields=['validation_code', 'validation_code_expires_at'])
+        return self.validation_code
 
 class Review(models.Model):
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE)
@@ -113,6 +166,19 @@ class Message(models.Model):
     is_sticker = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now_add=True)
     is_read = models.BooleanField(default=False)
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies')
+    
+    # --- Call support ---
+    is_call = models.BooleanField(default=False)
+    call_type = models.CharField(max_length=10, choices=[('audio', 'Audio'), ('video', 'Video')], null=True, blank=True)
+    call_status = models.CharField(max_length=20, choices=[
+        ('started', 'En attente'), 
+        ('ongoing', 'En cours'), 
+        ('ended', 'Terminé'), 
+        ('missed', 'Manqué'),
+        ('declined', 'Refusé')
+    ], default='started', null=True, blank=True)
+    call_room_id = models.CharField(max_length=100, null=True, blank=True)
 
 class GroupReadReceipt(models.Model):
     message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='read_receipts')
@@ -130,6 +196,7 @@ class Notification(models.Model):
         ('booking_confirmed', 'Cours Confirmé'),
         ('booking_cancelled', 'Cours Annulé'),
         ('new_booking', 'Nouveau Cours'),
+        ('incoming_call', 'Appel Entrant'),
     ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)

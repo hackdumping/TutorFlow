@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import {
     Send, ArrowLeft, MessageSquare, Search, CheckCheck,
     Check, Video, Loader2, Phone, MoreVertical, Smile, Sticker,
-    Paperclip, Info, X, Plus, Users, UserPlus, Image as ImageIcon, FileText
+    Paperclip, Info, X, Plus, Users, UserPlus, Image as ImageIcon, FileText,
+    Download, CheckCircle, XCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useCall } from '../context/CallContext';
 import api from '../api/axios';
 import EmojiPicker from 'emoji-picker-react';
 
@@ -85,31 +88,54 @@ const MessagingPage = () => {
     const [creatingGroup, setCreatingGroup] = useState(false);
     const [groupName, setGroupName] = useState('');
     const [selectedContactsForGroup, setSelectedContactsForGroup] = useState([]);
-    const [initialLoadDone, setInitialLoadDone] = useState(false);
     const [isDeletingConversation, setIsDeletingConversation] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isGroupAdmin, setIsGroupAdmin] = useState(false);
+    const [replyingTo, setReplyingTo] = useState(null);
+    const [isAtBottom, setIsAtBottom] = useState(true);
+
+    // Global call state from context
+    const { initiateCall: initiateCallGlobal, callStatus, setIncomingCall } = useCall();
 
     const messagesEndRef = useRef(null);
-    const pollingRef = useRef(null);
     const inputRef = useRef(null);
     const fileInputRef = useRef(null);
-    const receiveSound = useRef(typeof Audio !== "undefined" ? new Audio('/notif_alert.mp3') : null);
     const sendSound = useRef(typeof Audio !== "undefined" ? new Audio('/notif_alert.mp3') : null);
     const initialLoadRef = useRef(false);
 
-    const scrollToBottom = useCallback(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, []);
+    const scrollToBottom = useCallback((force = false) => {
+        if (force || isAtBottom) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [isAtBottom]);
+
+    const handleScroll = (e) => {
+        const { scrollTop, scrollHeight, clientHeight } = e.target;
+        const atBottom = scrollHeight - scrollTop - clientHeight < 100;
+        setIsAtBottom(atBottom);
+    };
 
     const loadConversations = useCallback(async (autoSelect = false) => {
         try {
             const res = await api.get('messages/conversations/');
-            setConversations(res.data);
+            const convs = res.data.conversations || (Array.isArray(res.data) ? res.data : []);
+            const globalActiveCall = res.data.active_call;
+
+            setConversations(convs);
+
+            // Global Call Detection: If an incoming call is detected anywhere, show the overlay
+            if (globalActiveCall && callStatus === 'idle' && globalActiveCall.sender !== user?.id) {
+                setActiveCall(globalActiveCall);
+                setCallStatus('receiving');
+            } else if (!globalActiveCall && (callStatus === 'receiving' || (callStatus === 'calling' && activeCall?.sender === user?.id))) {
+                // Call was cancelled or declined elsewhere
+                setCallStatus('idle');
+                setActiveCall(null);
+            }
 
             if (autoSelect && withUserId) {
                 const isGroup = searchParams.get('is_group') === 'true';
-                const match = res.data.find(c => {
+                const match = convs.find(c => {
                     if (isGroup) {
                         return c.is_group && String(c.group?.id) === String(withUserId);
                     } else {
@@ -126,18 +152,26 @@ const MessagingPage = () => {
                             const groupRes = await api.get(`groups/${withUserId}/`);
                             setSelectedPartner({ ...groupRes.data, is_group: true });
                             setShowMobileList(false);
-                        } catch {
-                            setSelectedPartner({ id: withUserId, is_group: true });
-                            setShowMobileList(false);
+                        } catch (err) {
+                            if (err.response?.status === 404 || err.response?.status === 403) {
+                                navigate('/404', { replace: true });
+                            } else {
+                                setSelectedPartner({ id: withUserId, is_group: true });
+                                setShowMobileList(false);
+                            }
                         }
                     } else {
                         try {
                             const userRes = await api.get(`users/${withUserId}/`);
                             setSelectedPartner(userRes.data);
                             setShowMobileList(false);
-                        } catch {
-                            setSelectedPartner({ id: withUserId });
-                            setShowMobileList(false);
+                        } catch (err) {
+                            if (err.response?.status === 404 || err.response?.status === 403) {
+                                navigate('/404', { replace: true });
+                            } else {
+                                setSelectedPartner({ id: withUserId });
+                                setShowMobileList(false);
+                            }
                         }
                     }
                 }
@@ -147,9 +181,9 @@ const MessagingPage = () => {
         } finally {
             setLoadingConvs(false);
         }
-    }, [withUserId, searchParams]);
+    }, [withUserId, searchParams, navigate]);
 
-    const loadMessages = useCallback(async (isPolling = false) => {
+    const loadMessages = useCallback(async () => {
         if (!selectedPartner?.id) return;
         try {
             const params = selectedPartner.is_group
@@ -161,7 +195,6 @@ const MessagingPage = () => {
 
             if (!initialLoadRef.current) {
                 initialLoadRef.current = true;
-                setInitialLoadDone(true);
             }
 
             if (res.data.length > 0) {
@@ -178,15 +211,9 @@ const MessagingPage = () => {
         } catch (err) {
             console.error("Error loading messages:", err);
         }
-    }, [selectedPartner?.id, user?.id]); // Note: loadConversations removed from deps to avoid loop
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedPartner?.id, user?.id, selectedPartner?.is_group]);
 
-    useEffect(() => {
-        const init = async () => {
-            await loadConversations(true);
-            await loadContactsAndGroups();
-        };
-        init();
-    }, []); // Run exactly once on mount
 
     const loadContactsAndGroups = useCallback(async () => {
         try {
@@ -200,6 +227,14 @@ const MessagingPage = () => {
             console.error("Error loading contacts/groups", err);
         }
     }, []);
+
+    useEffect(() => {
+        const init = async () => {
+            await loadConversations(true);
+            await loadContactsAndGroups();
+        };
+        init();
+    }, [withUserId, loadConversations, loadContactsAndGroups]);
 
     useEffect(() => {
         if (selectedPartner?.id) {
@@ -220,7 +255,9 @@ const MessagingPage = () => {
             }, 4000);
             return () => clearInterval(interval);
         }
-    }, [selectedPartner?.id, groups, user?.id, loadMessages, loadConversations]);
+    }, [selectedPartner?.id, selectedPartner?.is_group, groups, user?.id, loadMessages, loadConversations]);
+
+
 
     useEffect(() => {
         if (selectedPartner) {
@@ -236,16 +273,18 @@ const MessagingPage = () => {
                 }
             }
         }
-    }, [conversations]);
+    }, [conversations, selectedPartner]);
 
-    useEffect(() => { scrollToBottom(); }, [messages]);
+    useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
     const sendMessage = async (e) => {
         e.preventDefault();
         if ((!newMessage.trim() && !attachment) || !selectedPartner?.id) return;
         setSending(true);
         const msgContent = newMessage.trim();
+        const replyId = replyingTo?.id;
         setNewMessage('');
+        setReplyingTo(null);
 
         // Optimistic update
         const tempMsg = {
@@ -255,6 +294,8 @@ const MessagingPage = () => {
             receiver: !selectedPartner.is_group ? selectedPartner.id : null,
             group: selectedPartner.is_group ? selectedPartner.id : null,
             content: msgContent,
+            reply_to: replyId,
+            reply_to_details: replyingTo,
             timestamp: new Date().toISOString(),
             is_read: false,
         };
@@ -279,6 +320,9 @@ const MessagingPage = () => {
             if (bookingId) payload.append('booking', parseInt(bookingId));
             if (attachment) {
                 payload.append('file_attachment', attachment);
+            }
+            if (replyId) {
+                payload.append('reply_to', replyId);
             }
 
             await api.post('messages/', payload, {
@@ -352,24 +396,44 @@ const MessagingPage = () => {
         inputRef.current?.focus();
     };
 
-    const handleDeleteConversation = async () => {
-        if (!selectedPartner?.id) return;
+    const deleteConversation = async () => {
+        if (!selectedPartner) return;
         setIsDeletingConversation(true);
         try {
-            const params = selectedPartner.is_group
-                ? `group=${selectedPartner.id}`
-                : `conversation_with=${selectedPartner.id}`;
-            await api.delete(`messages/delete_conversation/?${params}`);
-            setMessages([]);
+            if (selectedPartner.is_group) {
+                await api.delete(`groups/${selectedPartner.id}/`);
+            } else {
+                await api.delete(`messages/delete_conversation/?partner_id=${selectedPartner.id}`);
+            }
             setSelectedPartner(null);
-            setShowMobileList(true);
             setShowDeleteConfirm(false);
-            loadConversations();
+            loadConversations(true);
         } catch (err) {
             console.error("Error deleting conversation", err);
         } finally {
             setIsDeletingConversation(false);
         }
+    };
+
+    // --- Call Handlers (delegate to global context) ---
+    const initiateCall = async (type) => {
+        if (!selectedPartner?.id) return;
+        try {
+            const callMsg = await initiateCallGlobal(selectedPartner, selectedPartner.is_group, type);
+            if (callMsg) {
+                // Add to local messages for immediate visual feedback
+                setMessages(prev => [...prev, callMsg]);
+            }
+        } catch (err) {
+            alert("Erreur lors du lancement de l'appel. Veuillez réessayer.");
+        }
+    };
+
+
+    const formatDuration = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
     const handleLeaveGroup = async () => {
@@ -756,10 +820,18 @@ const MessagingPage = () => {
                                     )}
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <button className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors hidden sm:block" title="Appel Audio (Bientôt)">
+                                    <button
+                                        onClick={() => initiateCall('audio')}
+                                        className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors"
+                                        title="Appel Audio"
+                                    >
                                         <Phone className="w-5 h-5" />
                                     </button>
-                                    <button className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors hidden sm:block" title="Appel Vidéo (Bientôt)">
+                                    <button
+                                        onClick={() => initiateCall('video')}
+                                        className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors"
+                                        title="Appel Vidéo"
+                                    >
                                         <Video className="w-5 h-5" />
                                     </button>
                                     {bookingId && (
@@ -778,7 +850,7 @@ const MessagingPage = () => {
                             </div>
 
                             {/* Messages */}
-                            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+                            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1" onScroll={handleScroll}>
                                 {loadingMsgs ? (
                                     <div className="flex items-center justify-center h-full">
                                         <Loader2 className="w-6 h-6 text-sky-500 animate-spin" />
@@ -809,11 +881,21 @@ const MessagingPage = () => {
                                                         </div>
                                                     )}
                                                     <motion.div
+                                                        id={`msg-${msg.id}`}
                                                         initial={{ opacity: 0, y: 8, scale: 0.98 }}
                                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                                         transition={{ duration: 0.15 }}
-                                                        className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${isConsecutive ? 'mt-0.5' : 'mt-2'}`}
+                                                        className={`flex group/msg ${isMine ? 'justify-end text-right' : 'justify-start'} ${isConsecutive ? 'mt-0.5' : 'mt-2'}`}
                                                     >
+                                                        {isMine && (
+                                                            <button
+                                                                onClick={() => setReplyingTo(msg)}
+                                                                className="opacity-0 group-hover/msg:opacity-100 p-2 text-slate-400 hover:text-sky-500 transition-all self-center mr-1"
+                                                                title="Répondre"
+                                                            >
+                                                                <ArrowLeft className="w-4 h-4 rotate-180" />
+                                                            </button>
+                                                        )}
                                                         {/* Avatar for partner messages - show in private chat or show sender if in group */}
                                                         {!isMine && !isSameSender && (
                                                             <img
@@ -838,7 +920,46 @@ const MessagingPage = () => {
                                                                         )}
                                                                     </div>
                                                                 )}
-                                                                {msg.is_sticker ? (
+                                                                {msg.reply_to_details && (
+                                                                    <div
+                                                                        className={`mb-2 p-2 rounded-lg border-l-4 bg-black/5 text-left cursor-pointer hover:bg-black/10 transition-colors ${isMine ? 'border-white/50' : 'border-sky-500'}`}
+                                                                        onClick={() => {
+                                                                            const target = document.getElementById(`msg-${msg.reply_to_details.id}`);
+                                                                            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                        }}
+                                                                    >
+                                                                        <p className={`text-[10px] font-black uppercase tracking-widest mb-0.5 ${isMine ? 'text-white/80' : 'text-sky-600'}`}>
+                                                                            {msg.reply_to_details.sender === currentUserId ? 'Vous' : (selectedPartner.is_group ? 'Message' : partnerName)}
+                                                                        </p>
+                                                                        <p className={`text-[11px] line-clamp-2 ${isMine ? 'text-white/90' : 'text-slate-600'}`}>
+                                                                            {msg.reply_to_details.is_sticker ? '🎨 Sticker' : (msg.reply_to_details.file_attachment ? '📎 Fichier' : msg.reply_to_details.content)}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                                {msg.is_call ? (
+                                                                    <div className="p-3 flex items-center gap-3 min-w-[180px]">
+                                                                        <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center shadow-sm ${isMine ? 'bg-white/20' : 'bg-sky-100'}`}>
+                                                                            {msg.call_type === 'video' ? <Video className={`w-5 h-5 ${isMine ? 'text-white' : 'text-sky-600'}`} /> : <Phone className={`w-5 h-5 ${isMine ? 'text-white' : 'text-sky-600'}`} />}
+                                                                        </div>
+                                                                        <div className="flex-1 text-left min-w-0">
+                                                                            <p className={`text-xs font-black uppercase tracking-tight truncate ${isMine ? 'text-white' : 'text-slate-900'}`}>
+                                                                                {msg.call_status === 'missed' ? 'Appel manqué' :
+                                                                                    msg.call_status === 'declined' ? 'Appel refusé' :
+                                                                                        msg.call_status === 'ongoing' ? 'Appel en cours' :
+                                                                                            msg.call_status === 'ended' ? 'Appel terminé' : 'Appel entrant'}
+                                                                            </p>
+                                                                            <p className={`text-[10px] font-bold opacity-70 ${isMine ? 'text-white' : 'text-slate-500'}`}>Appel {msg.call_type === 'video' ? 'vidéo' : 'audio'}</p>
+                                                                            {msg.call_status === 'started' && !isMine && (
+                                                                                <button
+                                                                                    onClick={() => setIncomingCall(msg)}
+                                                                                    className="mt-2 text-[10px] font-black uppercase tracking-widest bg-white text-sky-600 px-3 py-1.5 rounded-lg shadow-sm hover:shadow-md transition-all active:scale-95"
+                                                                                >
+                                                                                    Répondre
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : msg.is_sticker ? (
                                                                     <div className="p-1">
                                                                         {!isMine && selectedPartner.is_group && !isSameSender && (
                                                                             <div className="px-2 pb-1 text-[10px] font-bold text-slate-400">
@@ -852,23 +973,52 @@ const MessagingPage = () => {
                                                                         {msg.file_attachment && (
                                                                             <div className="mb-1 rounded-xl overflow-hidden bg-white/20">
                                                                                 {msg.file_attachment.match(/\.(jpeg|jpg|gif|png)$/i) ? (
-                                                                                    <img
-                                                                                        src={msg.file_attachment}
-                                                                                        alt="Pièce jointe"
-                                                                                        className="max-w-full h-auto max-h-60 object-contain rounded-xl"
-                                                                                    />
+                                                                                    <div className="relative group/img">
+                                                                                        <img
+                                                                                            src={msg.file_attachment}
+                                                                                            alt={msg.file_name || "Pièce jointe"}
+                                                                                            className="max-w-full h-auto max-h-60 object-contain rounded-xl"
+                                                                                        />
+                                                                                        <a
+                                                                                            href={msg.file_attachment}
+                                                                                            download={msg.file_name || "image.png"}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            className="absolute top-2 right-2 p-2 bg-black/50 text-white rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity hover:bg-black/70"
+                                                                                            title="Télécharger"
+                                                                                        >
+                                                                                            <Download className="w-4 h-4" />
+                                                                                        </a>
+                                                                                        {msg.file_name && (
+                                                                                            <div className="absolute bottom-0 left-0 w-full p-2 bg-gradient-to-t from-black/50 to-transparent text-[10px] text-white opacity-0 group-hover/img:opacity-100 transition-opacity whitespace-nowrap overflow-hidden text-ellipsis">
+                                                                                                {msg.file_name}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
                                                                                 ) : (
-                                                                                    <a
-                                                                                        href={msg.file_attachment}
-                                                                                        target="_blank"
-                                                                                        rel="noopener noreferrer"
-                                                                                        className={`flex items-center gap-3 p-3 text-sm font-semibold rounded-xl ${isMine ? 'text-white hover:bg-white/10' : 'text-slate-700 hover:bg-slate-50'}`}
-                                                                                    >
-                                                                                        <div className={`p-2 rounded-lg ${isMine ? 'bg-white/20' : 'bg-sky-100'}`}>
-                                                                                            <FileText className={`w-5 h-5 ${isMine ? 'text-white' : 'text-sky-600'}`} />
-                                                                                        </div>
-                                                                                        <span className="truncate">Document joint</span>
-                                                                                    </a>
+                                                                                    <div className="flex items-center gap-2 pr-2">
+                                                                                        <a
+                                                                                            href={msg.file_attachment}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            className={`flex-1 flex items-center gap-3 p-3 text-sm font-semibold rounded-xl ${isMine ? 'text-white hover:bg-white/10' : 'text-slate-700 hover:bg-slate-50'}`}
+                                                                                        >
+                                                                                            <div className={`p-2 rounded-lg ${isMine ? 'bg-white/20' : 'bg-sky-100'}`}>
+                                                                                                <FileText className={`w-5 h-5 ${isMine ? 'text-white' : 'text-sky-600'}`} />
+                                                                                            </div>
+                                                                                            <span className="truncate">{msg.file_name || "Document joint"}</span>
+                                                                                        </a>
+                                                                                        <a
+                                                                                            href={msg.file_attachment}
+                                                                                            download={msg.file_name || "document"}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            className={`p-2 rounded-full transition-colors ${isMine ? 'text-white hover:bg-white/20' : 'text-slate-400 hover:text-sky-600 hover:bg-slate-100'}`}
+                                                                                            title="Télécharger"
+                                                                                        >
+                                                                                            <Download className="w-4 h-4" />
+                                                                                        </a>
+                                                                                    </div>
                                                                                 )}
                                                                             </div>
                                                                         )}
@@ -880,7 +1030,7 @@ const MessagingPage = () => {
                                                                     </>
                                                                 )}
                                                             </div>
-                                                            <div className={`flex items-center gap-1 mt-0.5 px-1 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                                                            <div className={`flex items-center gap-1 mt-0.5 px-1 ${isMine ? 'justify-end text-right' : 'justify-start'}`}>
                                                                 <span className="text-[10px] text-slate-400">{formatTime(msg.timestamp)}</span>
                                                                 {isMine && (
                                                                     msg.is_read
@@ -889,6 +1039,15 @@ const MessagingPage = () => {
                                                                 )}
                                                             </div>
                                                         </div>
+                                                        {!isMine && (
+                                                            <button
+                                                                onClick={() => setReplyingTo(msg)}
+                                                                className="opacity-0 group-hover/msg:opacity-100 p-2 text-slate-400 hover:text-sky-500 transition-all self-center ml-1"
+                                                                title="Répondre"
+                                                            >
+                                                                <ArrowLeft className="w-4 h-4 rotate-180" />
+                                                            </button>
+                                                        )}
                                                     </motion.div>
                                                 </React.Fragment>
                                             );
@@ -900,6 +1059,30 @@ const MessagingPage = () => {
 
                             {/* Input Area */}
                             <div className="bg-white border-t border-slate-200 p-2 sm:p-3 relative z-10">
+                                <AnimatePresence>
+                                    {replyingTo && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 20 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: 20 }}
+                                            className="absolute bottom-full left-0 w-full p-3 bg-slate-50 border-t border-slate-200 shadow-lg flex items-center justify-between z-20"
+                                        >
+                                            <div className="flex items-center gap-3 overflow-hidden border-l-4 border-sky-500 pl-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-sky-600">
+                                                        Répondre à {replyingTo.sender === currentUserId ? 'vous' : (replyingTo.sender_details?.first_name || 'Utilisateur')}
+                                                    </p>
+                                                    <p className="text-xs text-slate-500 truncate">
+                                                        {replyingTo.is_sticker ? '🎨 Sticker' : (replyingTo.file_attachment ? '📎 Fichier' : replyingTo.content)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <button onClick={() => setReplyingTo(null)} className="p-2 text-slate-400 hover:text-red-500 bg-white rounded-full transition-colors shrink-0 shadow-sm">
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                                 {attachment && (
                                     <div className="absolute bottom-full left-0 w-full p-3 bg-white border-t border-slate-200 shadow-lg flex items-center justify-between z-20">
                                         <div className="flex items-center gap-3 overflow-hidden">
@@ -1097,13 +1280,51 @@ const MessagingPage = () => {
                                 )}
 
                                 <div className="p-6 bg-white mt-2 border-y border-slate-200">
-                                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Fichiers partagés</h4>
-                                    <div className="text-center py-6">
-                                        <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                                            <FileText className="w-5 h-5 text-slate-400" />
+                                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Fichiers partagés</h4>
+
+                                    {messages.filter(m => m.file_attachment).length > 0 ? (
+                                        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                            {messages.filter(m => m.file_attachment).reverse().map(m => {
+                                                const isImg = m.file_attachment.match(/\.(jpeg|jpg|gif|png)$/i);
+                                                return (
+                                                    <div key={`gallery-${m.id}`} className="group/item flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
+                                                        <div className={`w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-slate-100 flex items-center justify-center border border-slate-200`}>
+                                                            {isImg ? (
+                                                                <img src={m.file_attachment} className="w-full h-full object-cover" alt="" />
+                                                            ) : (
+                                                                <FileText className="w-5 h-5 text-sky-500" />
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-xs font-bold text-slate-900 truncate pr-2">
+                                                                {m.file_name || "Document"}
+                                                            </p>
+                                                            <p className="text-[10px] text-slate-400 font-medium">
+                                                                {formatTime(m.timestamp)}
+                                                            </p>
+                                                        </div>
+                                                        <a
+                                                            href={m.file_attachment}
+                                                            download={m.file_name || (isImg ? "image.png" : "document")}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-full transition-all opacity-0 group-hover/item:opacity-100"
+                                                            title="Télécharger"
+                                                        >
+                                                            <Download className="w-4 h-4" />
+                                                        </a>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                        <p className="text-sm font-semibold text-slate-500">Aucun fichier</p>
-                                    </div>
+                                    ) : (
+                                        <div className="text-center py-6">
+                                            <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                <FileText className="w-5 h-5 text-slate-400" />
+                                            </div>
+                                            <p className="text-sm font-semibold text-slate-500">Aucun fichier</p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Group Members Section */}

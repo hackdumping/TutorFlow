@@ -1,27 +1,59 @@
 import React, { useState, useEffect, useCallback } from 'react';
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     DollarSign, Users, Calendar, Clock,
     Settings, CheckCircle, TrendingUp, BookOpen,
     Bell, ChevronRight, LayoutDashboard, LogOut,
     Sparkles, User, Star, Plus, PieChart, Menu, X,
-    Video, MapPin, MessageSquare, Check, XCircle, Loader2
+    Video, MapPin, MessageSquare, Check, XCircle, Loader2,
+    Shield, CheckCheck, Home, KeyRound, FileDown, Search, Filter,
+    Download, FileText, ChevronLeft, AlertCircle
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDesktop } from '../hooks/useDesktop';
 import api from '../api/axios';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const TeacherDashboard = () => {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [currentTime, setCurrentTime] = useState(new Date());
     const isDesktop = useDesktop();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [updatingStatus, setUpdatingStatus] = useState(null);
     const [filterMode, setFilterMode] = useState('week'); // 'week' or 'all'
     const [activeTab, setActiveTab] = useState('overview');
+    const [historyFilters, setHistoryFilters] = useState({ startDate: '', endDate: '' });
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
+    const downloadCSV = (data) => {
+        const headers = ["Date", "Heure", "Élève", "Matière", "Type", "Durée (h)", "Statut"];
+        const rows = data.map(b => [
+            b.date,
+            b.time,
+            `${b.student_details?.first_name || ''} ${b.student_details?.last_name || ''}`,
+            b.subject_name || b.subject_details?.name || '',
+            b.course_type === 'online' ? 'En ligne' : 'Présentiel',
+            b.duration_hours,
+            b.status === 'completed' ? 'Validé' : b.status === 'cancelled' ? 'Annulé' : b.status
+        ]);
+        const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `historique_tutorflow_prof_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     // Teacher specific features
     const [teacherProfile, setTeacherProfile] = useState(null);
@@ -38,13 +70,17 @@ const TeacherDashboard = () => {
         duration_hours: 1,
         course_type: 'online'
     });
-    const [subjects, setSubjects] = useState([]);
     const [isCreatingSession, setIsCreatingSession] = useState(false);
     const [studentSearch, setStudentSearch] = useState({ name: '', city: '', country: '' });
     const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
     const [sessionCreated, setSessionCreated] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
+
+    // In-person code validation
+    const [validationInputs, setValidationInputs] = useState({}); // { [bookingId]: code }
+    const [validatingId, setValidatingId] = useState(null);
+    const [validationResult, setValidationResult] = useState({}); // { [bookingId]: 'success' | 'error' | msg }
 
     const filteredStudents = students.filter(s => {
         const matchesName = `${s.first_name} ${s.last_name}`.toLowerCase().includes(studentSearch.name.toLowerCase());
@@ -68,6 +104,11 @@ const TeacherDashboard = () => {
         } finally {
             setUpdatingStatus(null);
         }
+    }, []);
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 10000);
+        return () => clearInterval(timer);
     }, []);
 
     useEffect(() => {
@@ -107,30 +148,25 @@ const TeacherDashboard = () => {
             try {
                 const res = await api.get('users/chat-contacts/');
                 setStudents(res.data.filter(u => u.role === 'student'));
-            } catch (err) { }
-        };
-
-        const fetchSubjects = async () => {
-            try {
-                const res = await api.get('subjects/');
-                setSubjects(res.data);
-            } catch (err) { }
+            } catch (err) {
+                console.error("Error fetching students", err);
+            }
         };
 
         const fetchNotifications = async () => {
             try {
                 const res = await api.get('notifications/');
-                // ONLY show new bookings for teachers on the dashboard bell
-                const filtered = res.data.filter(n => n.type === 'new_booking');
-                setNotifications(filtered);
-                setUnreadNotificationsCount(filtered.filter(n => !n.is_read).length);
-            } catch (err) { }
+                setNotifications(res.data);
+                const unread = res.data.filter(n => !n.is_read).length;
+                setUnreadNotificationsCount(unread);
+            } catch {
+                console.error("Error fetching notifications");
+            }
         };
 
         fetchBookings();
         fetchTeacherProfile();
         fetchStudents();
-        fetchSubjects();
         fetchNotifications();
 
         const interval = setInterval(() => {
@@ -202,6 +238,117 @@ const TeacherDashboard = () => {
         pending: bookings.filter(b => b.status === 'pending').length
     };
 
+    // Filtering helpers
+    const isPast = (date, time) => {
+        const now = new Date();
+        const bookingDate = new Date(`${date}T${time}`);
+        return bookingDate < now;
+    };
+
+    const upcomingBookings = bookings.filter(b => {
+        return b.status === 'confirmed' || b.status === 'pending';
+    });
+
+    const historicalBookings = bookings.filter(b => {
+        if (b.status !== 'completed' && b.status !== 'cancelled') return false;
+        if (!historyFilters.startDate && !historyFilters.endDate) return true;
+        const bDate = new Date(b.date);
+        const start = historyFilters.startDate ? new Date(historyFilters.startDate) : null;
+        const end = historyFilters.endDate ? new Date(historyFilters.endDate) : null;
+        if (start) start.setHours(0, 0, 0, 0);
+        if (end) end.setHours(23, 59, 59, 999);
+        if (start && bDate < start) return false;
+        if (end && bDate > end) return false;
+        return true;
+    });
+
+    const totalPages = Math.ceil(historicalBookings.length / itemsPerPage);
+    const paginatedHistory = historicalBookings.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+    const downloadPDF = () => {
+        const doc = new jsPDF();
+        const totalSessions = historicalBookings.length;
+        const totalHours = historicalBookings.reduce((acc, b) => acc + (b.duration_hours || 0), 0);
+
+        // Premium Header
+        doc.setFillColor(15, 23, 42); // slate-900
+        doc.rect(0, 0, 210, 50, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(28);
+        doc.setFont('helvetica', 'bold');
+        doc.text("TutorFlow", 20, 25);
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text("RAPPORT D'ACTIVITÉ - PROFESSEUR", 190, 25, { align: 'right' });
+
+        doc.setFontSize(9);
+        doc.text(`Période: ${historyFilters.startDate || 'Début'} au ${historyFilters.endDate || 'Aujourd\'hui'}`, 190, 32, { align: 'right' });
+
+        // Summary Cards
+        doc.setFillColor(248, 250, 252); // slate-50
+        doc.roundedRect(20, 60, 80, 25, 3, 3, 'F');
+        doc.roundedRect(110, 60, 80, 25, 3, 3, 'F');
+
+        doc.setTextColor(100, 116, 139); // slate-500
+        doc.setFontSize(8);
+        doc.text("TOTAL SESSIONS", 30, 68);
+        doc.text("TOTAL HEURES", 120, 68);
+
+        doc.setTextColor(15, 23, 42); // slate-900
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text(totalSessions.toString(), 30, 78);
+        doc.text(`${totalHours}h`, 120, 78);
+
+        // User Detail
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(71, 85, 105); // slate-600
+        doc.text(`Professeur: ${user?.first_name} ${user?.last_name}`, 20, 100);
+        doc.text(`Généré le: ${new Date().toLocaleString('fr-FR')}`, 190, 100, { align: 'right' });
+
+        // Table
+        const headers = [["Date", "Élève", "Matière", "Type", "Durée", "Statut", "Paiement"]];
+        const data = historicalBookings.map(b => [
+            b.date,
+            `${b.student_details?.first_name} ${b.student_details?.last_name}`,
+            b.subject_details?.name || b.subject,
+            b.course_type === 'online' ? 'En ligne' : 'Présentiel',
+            `${b.duration_hours}h`,
+            b.status === 'completed' ? 'Terminé' : 'Annulé',
+            b.payment_status === 'paid' ? 'Payé' : 'À régler'
+        ]);
+
+        autoTable(doc, {
+            startY: 110,
+            head: headers,
+            body: data,
+            theme: 'grid',
+            headStyles: {
+                fillColor: [14, 165, 233],
+                textColor: [255, 255, 255],
+                fontStyle: 'bold',
+                halign: 'center'
+            },
+            styles: {
+                fontSize: 8,
+                cellPadding: 4,
+                valign: 'middle'
+            },
+            columnStyles: {
+                0: { halign: 'center', cellWidth: 25 },
+                4: { halign: 'center', cellWidth: 15 },
+                5: { halign: 'center' },
+                6: { halign: 'center' }
+            },
+            alternateRowStyles: { fillColor: [255, 255, 255] }
+        });
+
+        doc.save(`historique_tutorflow_prof_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
     return (
         <div className="min-h-screen bg-slate-100/50 text-slate-900 font-sans selection:bg-sky-100 overflow-x-hidden">
             {/* Mobile Sidebar Overlay (Premium Independence) */}
@@ -251,6 +398,7 @@ const TeacherDashboard = () => {
                                     {[
                                         { name: 'Dashboard', icon: LayoutDashboard, handler: () => setActiveTab('overview') },
                                         { name: 'Cours', icon: BookOpen, handler: () => setActiveTab('schedule') },
+                                        { name: 'Historique', icon: Calendar, handler: () => setActiveTab('history') },
                                         { name: 'Messages', icon: MessageSquare, handler: () => navigate('/messages') },
                                         { name: 'Profil', icon: User, handler: () => navigate('/profile') },
                                         { name: 'Revenus', icon: PieChart, handler: () => setActiveTab('revenue') }
@@ -296,7 +444,7 @@ const TeacherDashboard = () => {
                     </button>
                 </div>
 
-                <div className="flex flex-col lg:flex-row gap-12 items-start relative">
+                <div className="flex flex-col lg:flex-row gap-8 lg:gap-12 items-start relative">
                     {/* Desktop Side Bar */}
                     <aside className="hidden lg:block w-80 sticky top-32">
                         <div className="bg-white/60 backdrop-blur-xl shadow-sm border border-slate-200/60 text-center rounded-3xl p-8">
@@ -363,6 +511,12 @@ const TeacherDashboard = () => {
                                 className={`w-full flex items-center gap-3 p-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'schedule' ? 'bg-slate-950 text-white shadow-xl shadow-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-sky-600'}`}
                             >
                                 <BookOpen className="w-4 h-4" /> Mes Cours
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('history')}
+                                className={`w-full flex items-center gap-3 p-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-slate-950 text-white shadow-xl shadow-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-sky-600'}`}
+                            >
+                                <Calendar className="w-4 h-4" /> Historique
                             </button>
                             <Link to="/messages" className="w-full flex items-center gap-3 p-4 rounded-2xl text-slate-500 hover:bg-slate-50 hover:text-sky-600 font-black text-[10px] uppercase tracking-widest transition-all">
                                 <MessageSquare className="w-4 h-4" /> Messagerie
@@ -432,7 +586,7 @@ const TeacherDashboard = () => {
                                                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                                                     animate={{ opacity: 1, scale: 1, y: 0 }}
                                                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                    className="absolute top-full left-0 md:left-auto md:right-0 mt-4 w-[calc(100vw-3rem)] sm:w-80 bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden z-[170] origin-top-left md:origin-top-right"
+                                                    className="absolute top-full left-0 md:left-auto md:right-0 mt-4 w-[calc(100vw-3rem)] sm:w-[400px] bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden z-[170] origin-top-left md:origin-top-right"
                                                 >
                                                     <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                                                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-900">Notifications</span>
@@ -497,12 +651,22 @@ const TeacherDashboard = () => {
                                                                         // For teachers, new_booking means checking the dashboard
                                                                         if (notif.type === 'new_booking') {
                                                                             setActiveTab('schedule');
+                                                                        } else if (notif.type === 'incoming_call' || notif.type === 'message') {
+                                                                            navigate('/messages');
                                                                         }
                                                                     }}
                                                                     className={`w-full p-6 flex items-start gap-4 hover:bg-slate-50 transition-all text-left border-b border-slate-50/50 last:border-0 ${!notif.is_read ? 'bg-sky-50/30' : ''}`}
                                                                 >
-                                                                    <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center shadow-sm ${notif.type === 'new_booking' ? 'bg-amber-100 text-amber-600' : 'bg-sky-100 text-sky-600'}`}>
-                                                                        {notif.type === 'new_booking' ? <Calendar className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+                                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${notif.is_read ? 'bg-slate-50 text-slate-400' :
+                                                                        notif.type === 'booking_confirmed' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                                                                            notif.type === 'booking_cancelled' ? 'bg-red-50 text-red-600 border border-red-100' :
+                                                                                notif.type === 'booking_completed' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' :
+                                                                                    'bg-sky-50 text-sky-600 border border-sky-100'}`}>
+                                                                        {notif.type === 'new_booking' ? <Plus className="w-5 h-5" /> :
+                                                                            notif.type === 'booking_confirmed' ? <CheckCircle className="w-5 h-5" /> :
+                                                                                notif.type === 'booking_cancelled' ? <XCircle className="w-5 h-5" /> :
+                                                                                    notif.type === 'booking_completed' ? <CheckCheck className="w-5 h-5" /> :
+                                                                                        <Bell className="w-5 h-5" />}
                                                                     </div>
                                                                     <div className="min-w-0 flex-1">
                                                                         <p className="text-[11px] font-black text-slate-900 leading-tight mb-1 uppercase tracking-tight">{notif.title}</p>
@@ -572,6 +736,65 @@ const TeacherDashboard = () => {
                             </div>
                         )}
 
+                        {/* Pending Requests Section */}
+                        {activeTab === 'overview' && bookings.filter(b => b.status === 'pending').length > 0 && (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="bg-amber-50 border border-amber-100 rounded-[2rem] p-6 mb-12 shadow-sm shadow-amber-100"
+                            >
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center animate-pulse">
+                                        <AlertCircle className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-black text-amber-900 tracking-tight">Demandes nécessitant votre attention</h3>
+                                        <p className="text-xs text-amber-600 font-medium">Veuillez accepter ou refuser ces demandes avant l'heure de début prévue.</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {bookings.filter(b => b.status === 'pending').map(booking => (
+                                        <div key={booking.id} className="bg-white p-5 rounded-2xl shadow-sm border border-amber-100 flex flex-col justify-between gap-4 group hover:border-amber-200 transition-all">
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-12 h-12 bg-amber-50 rounded-xl flex flex-col items-center justify-center shrink-0 border border-amber-100">
+                                                    <span className="text-[9px] font-bold uppercase text-amber-600">
+                                                        {new Date(booking.date).toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '').toUpperCase()}
+                                                    </span>
+                                                    <span className="text-lg font-black text-amber-700">
+                                                        {new Date(booking.date).getDate()}
+                                                    </span>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-[9px] font-black uppercase text-amber-500 mb-0.5 truncate">{booking.subject_details?.name}</p>
+                                                    <h4 className="font-bold text-slate-900 text-sm truncate">{booking.student_details?.first_name} {booking.student_details?.last_name || `Élève #${booking.student}`}</h4>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Clock className="w-3 h-3 text-slate-400" />
+                                                        <span className="text-[10px] font-bold text-slate-500">{booking.time?.substring(0, 5)} · {booking.duration_hours}h</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => updateBookingStatus(booking.id, 'confirmed')}
+                                                    disabled={updatingStatus === booking.id}
+                                                    className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-lg shadow-emerald-100 disabled:opacity-50"
+                                                >
+                                                    {updatingStatus === booking.id ? '...' : 'Accepter'}
+                                                </button>
+                                                <button
+                                                    onClick={() => updateBookingStatus(booking.id, 'cancelled')}
+                                                    disabled={updatingStatus === booking.id}
+                                                    className="flex-1 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all disabled:opacity-50"
+                                                >
+                                                    Refuser
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </motion.div>
+                        )}
+
                         {/* Main Content Sections */}
                         <div className={`grid gap-12 ${activeTab === 'overview' ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
                             {/* Schedule List */}
@@ -582,37 +805,52 @@ const TeacherDashboard = () => {
                                             <div className="w-10 h-10 rounded-xl bg-sky-100 flex items-center justify-center">
                                                 <Calendar className="w-5 h-5 text-sky-600" />
                                             </div>
-                                            {filterMode === 'week' ? 'Semaine ' : 'Agenda '} <span className="font-medium text-slate-400">{filterMode === 'week' ? 'complète' : 'complet'}</span>
+                                            {activeTab === 'overview' ? 'Prochaines Séances' : 'Planning Complet'}
                                         </h2>
-                                        <button
-                                            onClick={() => setFilterMode(prev => prev === 'week' ? 'all' : 'week')}
-                                            className="text-xs font-bold text-sky-600 uppercase tracking-wider px-4 py-2 rounded-lg bg-sky-50 hover:bg-sky-100 transition-colors"
-                                        >
-                                            {filterMode === 'week' ? 'Voir Tout' : 'Semaine Complète'}
-                                        </button>
+                                        {activeTab === 'schedule' && (
+                                            <button
+                                                onClick={() => setFilterMode(prev => prev === 'week' ? 'all' : 'week')}
+                                                className="text-xs font-bold text-sky-600 uppercase tracking-wider px-4 py-2 rounded-lg bg-sky-50 hover:bg-sky-100 transition-colors"
+                                            >
+                                                {filterMode === 'week' ? 'Voir Tout' : 'Semaine Complète'}
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="space-y-4">
                                         {loading ? (
                                             [1, 2].map(i => <div key={i} className="h-28 bg-slate-100 dark:bg-slate-800 rounded-3xl animate-pulse"></div>)
-                                        ) : bookings.length > 0 ? (
-                                            bookings.filter(b => {
-                                                if (filterMode === 'all') return true;
+                                        ) : (() => {
+                                            const filtered = upcomingBookings.filter(b => {
+                                                if (filterMode === 'all' || activeTab === 'overview') return true;
                                                 const bDate = new Date(b.date);
                                                 const today = new Date();
                                                 today.setHours(0, 0, 0, 0);
                                                 const nextWeek = new Date(today);
                                                 nextWeek.setDate(today.getDate() + 7);
                                                 return bDate >= today && bDate <= nextWeek;
-                                            }).length > 0 ? bookings.filter(b => {
-                                                if (filterMode === 'all') return true;
-                                                const bDate = new Date(b.date);
-                                                const today = new Date();
-                                                today.setHours(0, 0, 0, 0);
-                                                const nextWeek = new Date(today);
-                                                nextWeek.setDate(today.getDate() + 7);
-                                                return bDate >= today && bDate <= nextWeek;
-                                            }).map((booking) => (
+                                            });
+
+                                            if (upcomingBookings.length === 0) {
+                                                return (
+                                                    <div className="bg-slate-50 rounded-3xl p-16 border border-slate-100 border-dashed text-center">
+                                                        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                                            <Calendar className="w-8 h-8 text-slate-300" />
+                                                        </div>
+                                                        <p className="text-slate-500 font-medium text-sm">Aucune session prévue pour le moment.</p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            if (filtered.length === 0) {
+                                                return (
+                                                    <div className="text-center p-8 bg-white/50 rounded-3xl border border-slate-100">
+                                                        <p className="text-slate-500 font-medium italic">Aucune session pour cette période.</p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return filtered.map((booking) => (
                                                 <motion.div
                                                     key={booking.id}
                                                     initial={{ opacity: 0, x: -10 }}
@@ -662,7 +900,6 @@ const TeacherDashboard = () => {
                                                         </div>
                                                     </div>
 
-                                                    {/* Action Buttons */}
                                                     <div className="flex flex-wrap md:flex-nowrap gap-2 items-center">
                                                         {booking.status === 'pending' && (
                                                             <>
@@ -681,31 +918,192 @@ const TeacherDashboard = () => {
                                                                     <XCircle className="w-4 h-4" /> Refuser
                                                                 </button>
                                                             </>
-                                                        )
-                                                        }
-                                                        {
-                                                            booking.status === 'confirmed' && booking.course_type === 'online' && (
+                                                        )}
+                                                        {booking.status === 'confirmed' && booking.course_type === 'online' && (() => {
+                                                            const start = new Date(`${booking.date}T${booking.time}`);
+                                                            const windowStart = new Date(start.getTime() - (15 * 60 * 1000));
+                                                            const canJoin = currentTime >= windowStart;
+
+                                                            if (!canJoin) return (
+                                                                <button disabled className="px-4 py-2 bg-slate-200 text-slate-400 rounded-xl font-bold text-xs cursor-not-allowed flex items-center gap-1.5" title={`Disponible à ${windowStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}>
+                                                                    <Video className="w-4 h-4" /> Rejoindre
+                                                                </button>
+                                                            );
+
+                                                            return (
                                                                 <Link
                                                                     to={`/classroom/${booking.id}`}
                                                                     className="px-4 py-2 bg-indigo-500 text-white rounded-xl font-bold text-xs hover:bg-indigo-600 transition-all flex items-center gap-1.5 shadow-sm shadow-indigo-500/20"
                                                                 >
                                                                     <Video className="w-4 h-4" /> Rejoindre
                                                                 </Link>
-                                                            )
-                                                        }
+                                                            );
+                                                        })()}
+                                                        {booking.status === 'confirmed' && booking.course_type === 'in_person' && !booking.is_validated && (
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <input
+                                                                    type="text"
+                                                                    maxLength={6}
+                                                                    placeholder="Code 6 chiffres"
+                                                                    value={validationInputs[booking.id] || ''}
+                                                                    onChange={e => setValidationInputs(prev => ({ ...prev, [booking.id]: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                                                                    className="w-32 px-3 py-2 border border-slate-200 rounded-xl text-sm font-black tracking-[0.2em] text-center bg-slate-50 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all placeholder:tracking-normal placeholder:font-normal placeholder:text-xs placeholder:text-slate-300"
+                                                                />
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        const code = validationInputs[booking.id];
+                                                                        if (!code || code.length !== 6) return;
+                                                                        setValidatingId(booking.id);
+                                                                        try {
+                                                                            await api.post(`bookings/${booking.id}/validate_in_person/`, { code });
+                                                                            setValidationResult(prev => ({ ...prev, [booking.id]: 'success' }));
+                                                                            setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, status: 'completed', is_validated: true } : b));
+                                                                        } catch (e) {
+                                                                            setValidationResult(prev => ({ ...prev, [booking.id]: e.response?.data?.error || 'Code incorrect' }));
+                                                                        } finally {
+                                                                            setValidatingId(null);
+                                                                        }
+                                                                    }}
+                                                                    disabled={validatingId === booking.id || (validationInputs[booking.id] || '').length !== 6}
+                                                                    className="p-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl transition-all disabled:opacity-40 flex items-center gap-1.5 font-bold text-xs"
+                                                                >
+                                                                    {validatingId === booking.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />} Valider
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        {validationResult[booking.id] && (
+                                                            <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${validationResult[booking.id] === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                                                                {validationResult[booking.id] === 'success' ? '✓ Validé !' : validationResult[booking.id]}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </motion.div>
-                                            )) : (
-                                                <div className="text-center p-8 bg-white/50 rounded-3xl border border-slate-100">
-                                                    <p className="text-slate-500 font-medium italic">Aucune session pour cette période.</p>
-                                                </div>
-                                            )
+                                            ));
+                                        })()}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* History Section */}
+                            {activeTab === 'history' && (
+                                <div className="space-y-8">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-200/60">
+                                        <div>
+                                            <h2 className="text-3xl font-black text-slate-900 tracking-tight uppercase">Historique des cours</h2>
+                                            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Gérez et exportez vos sessions passées</p>
+                                        </div>
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            <button
+                                                onClick={() => downloadCSV(historicalBookings)}
+                                                className="px-6 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+                                            >
+                                                <Download className="w-4 h-4" /> Exporter en CSV
+                                            </button>
+                                            <button
+                                                onClick={downloadPDF}
+                                                className="px-6 py-4 bg-sky-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 hover:bg-sky-500 transition-all shadow-xl shadow-sky-200 active:scale-95"
+                                            >
+                                                <FileText className="w-4 h-4" /> Télécharger en PDF
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* History Filters */}
+                                    <div className="p-5 sm:p-8 bg-white rounded-[2.5rem] border border-slate-200/60 shadow-sm flex flex-col sm:flex-row flex-wrap items-end gap-4 sm:gap-6 text-left">
+                                        <div className="w-full sm:flex-1 sm:min-w-[200px]">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Date de début</label>
+                                            <div className="relative group">
+                                                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-sky-600 transition-colors" />
+                                                <input
+                                                    type="date"
+                                                    value={historyFilters.startDate}
+                                                    onChange={e => setHistoryFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                                                    className="w-full pl-12 pr-6 py-4 bg-slate-50 rounded-2xl border border-transparent focus:border-sky-500 focus:bg-white outline-none text-xs font-bold transition-all"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="w-full sm:flex-1 sm:min-w-[200px]">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block">Date de fin</label>
+                                            <div className="relative group">
+                                                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-sky-600 transition-colors" />
+                                                <input
+                                                    type="date"
+                                                    value={historyFilters.endDate}
+                                                    onChange={e => setHistoryFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                                                    className="w-full pl-12 pr-6 py-4 bg-slate-50 rounded-2xl border border-transparent focus:border-sky-500 focus:bg-white outline-none text-xs font-bold transition-all"
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setHistoryFilters({ startDate: '', endDate: '' })}
+                                            className="w-full sm:w-auto px-8 py-4 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                        >
+                                            Réinitialiser
+                                        </button>
+                                    </div>
+
+                                    {/* History Table/List */}
+                                    <div className="space-y-4">
+                                        {paginatedHistory.length > 0 ? (
+                                            <>
+                                                {paginatedHistory.map((booking) => (
+                                                    <motion.div key={booking.id} initial={{ opacity: 0, x: -10 }} whileInView={{ opacity: 1, x: 0 }} className="flex flex-col sm:flex-row items-center justify-between p-6 bg-white rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all group gap-6">
+                                                        <div className="flex items-center gap-6 w-full sm:w-auto">
+                                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 border border-slate-50 ${booking.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                                                {booking.status === 'completed' ? <CheckCheck className="w-7 h-7" /> : <XCircle className="w-7 h-7" />}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-3 mb-1">
+                                                                    <h4 className="font-black text-slate-900 text-base truncate">{booking.subject_name || booking.subject_details?.name}</h4>
+                                                                    <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${booking.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                                        {booking.status === 'completed' ? 'Validé' : 'Annulé'}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Le {new Date(booking.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} · Avec {booking.student_details?.first_name} {booking.student_details?.last_name}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center justify-between w-full sm:w-auto sm:text-right gap-8">
+                                                            <div>
+                                                                <p className="text-sm font-black text-slate-900 mb-0.5">{booking.duration_hours}h de cours</p>
+                                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{booking.course_type === 'online' ? 'En ligne' : 'Présentiel'}</p>
+                                                            </div>
+                                                            <Link to={`/messages?with=${booking.student}`} className="p-3 bg-slate-50 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-xl transition-all">
+                                                                <MessageSquare className="w-4 h-4" />
+                                                            </Link>
+                                                        </div>
+                                                    </motion.div>
+                                                ))}
+
+                                                {/* Pagination Controls */}
+                                                {totalPages > 1 && (
+                                                    <div className="mt-8 flex items-center justify-center gap-4">
+                                                        <button
+                                                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                                            disabled={currentPage === 1}
+                                                            className="p-2 bg-white border border-slate-200 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 transition-all shadow-sm"
+                                                        >
+                                                            <ChevronLeft className="w-5 h-5 text-slate-600" />
+                                                        </button>
+                                                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
+                                                            Page <span className="text-sky-600">{currentPage}</span> sur {totalPages}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                                            disabled={currentPage === totalPages}
+                                                            className="p-2 bg-white border border-slate-200 rounded-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 transition-all shadow-sm"
+                                                        >
+                                                            <ChevronRight className="w-5 h-5 text-slate-600" />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
                                         ) : (
-                                            <div className="bg-slate-50 rounded-3xl p-16 border border-slate-100 border-dashed text-center">
-                                                <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
-                                                    <Calendar className="w-8 h-8 text-slate-300" />
+                                            <div className="text-center py-20 bg-slate-50 rounded-[3rem] border border-slate-100 border-dashed">
+                                                <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                                                    <Search className="w-10 h-10 text-slate-200" />
                                                 </div>
-                                                <p className="text-slate-500 font-medium text-sm">Aucune session prévue pour le moment.</p>
+                                                <h3 className="text-lg font-black text-slate-900 mb-2">Aucun résultat</h3>
+                                                <p className="text-sm text-slate-400 font-medium">Affinez vos filtres pour trouver des sessions passées.</p>
                                             </div>
                                         )}
                                     </div>
