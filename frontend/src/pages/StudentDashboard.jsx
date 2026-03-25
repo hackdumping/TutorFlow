@@ -6,9 +6,10 @@ import {
     ArrowRight, BookOpen, Star, GraduationCap, LayoutDashboard,
     Bell, Settings, LogOut, Search, Plus, Sparkles, Menu, X, Video,
     Shield, MapPin, QrCode, Copy, CheckCheck, Timer, Home, FileDown,
-    Download, FileText, ChevronLeft, ChevronRight
+    Download, FileText, ChevronLeft, ChevronRight, Wallet, CreditCard, Minus,
+    Activity
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useDesktop } from '../hooks/useDesktop';
 import api from '../api/axios';
@@ -36,6 +37,34 @@ const StudentDashboard = () => {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+
+    // Financial State
+    const [wallet, setWallet] = useState(null);
+    const [transactions, setTransactions] = useState([]);
+    const [depositAmount, setDepositAmount] = useState('');
+    const [depositLoading, setDepositLoading] = useState(false);
+    const location = useLocation();
+
+    // Auto-confirm sandbox mock deposits on return from payment page
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const paymentStatus = params.get('payment');
+        const ref = params.get('ref');
+        if ((paymentStatus === 'mock_success' || paymentStatus === 'success') && ref) {
+            // Confirm this deposit reference on the backend
+            api.post('wallet/confirm_deposit/', { reference: ref })
+                .then(res => {
+                    // Refresh wallet data
+                    api.get('wallet/me/').then(r => setWallet(r.data)).catch(() => { });
+                    api.get('transactions/').then(r => setTransactions(r.data || r.data?.results || [])).catch(() => { });
+                })
+                .catch(() => {
+                    // Already confirmed or not found — silently ignore
+                });
+            // Clean the URL so it doesn't retrigger on reload
+            window.history.replaceState({}, '', '/student-dashboard');
+        }
+    }, [location.search]);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 10000); // Update every 10s
@@ -80,12 +109,25 @@ const StudentDashboard = () => {
             }
         };
 
+        const fetchWalletData = async () => {
+            try {
+                const wRes = await api.get('wallet/me/');
+                setWallet(wRes.data);
+                const tRes = await api.get('transactions/');
+                setTransactions(tRes.data);
+            } catch (err) {
+                console.error("Error fetching wallet data", err);
+            }
+        };
+
         fetchBookings();
         fetchNotifications();
+        fetchWalletData();
 
         const interval = setInterval(() => {
             fetchBookings();
             fetchNotifications();
+            fetchWalletData();
         }, 15000);
 
         return () => clearInterval(interval);
@@ -115,6 +157,76 @@ const StudentDashboard = () => {
             alert(e.response?.data?.error || 'Erreur lors de la génération du code.');
         } finally {
             setCodeLoading(false);
+        }
+    };
+
+    // Polling for pending deposits
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            const pending = transactions.filter(tx => tx.transaction_type === 'deposit' && tx.status === 'pending');
+            if (pending.length > 0) {
+                for (const tx of pending) {
+                    try {
+                        await api.post('wallet/confirm_deposit/', { reference: tx.reference_id });
+                        const [walletRes, txRes] = await Promise.all([
+                            api.get('wallet/me/'),
+                            api.get('transactions/')
+                        ]);
+                        setWallet(walletRes.data);
+                        setTransactions(txRes.data);
+                        toast.success(`Dépôt ${tx.reference_id} confirmé !`);
+                    } catch (e) {
+                        // Still pending
+                    }
+                }
+            }
+        }, 10000);
+        return () => clearInterval(interval);
+    }, [transactions]);
+
+    const handleVerifyDeposit = async (ref) => {
+        try {
+            await api.post('wallet/confirm_deposit/', { reference: ref });
+            const [walletRes, txRes] = await Promise.all([
+                api.get('wallet/me/'),
+                api.get('transactions/')
+            ]);
+            setWallet(walletRes.data);
+            setTransactions(txRes.data);
+            toast.success("Dépôt confirmé !");
+        } catch (e) {
+            toast.error("Le paiement est toujours en attente ou a échoué.");
+        }
+    };
+
+    const handleDeposit = async () => {
+        if (!depositAmount || isNaN(depositAmount) || Number(depositAmount) <= 0) {
+            alert('Veuillez entrer un montant valide.');
+            return;
+        }
+        if (!user.phone_number) {
+            if (window.confirm("Vous devez renseigner votre numéro de téléphone (ainsi que votre pays et ville) dans votre profil avant de faire un dépôt.\nVoulez-vous aller sur votre profil maintenant ?")) {
+                navigate('/profile');
+            }
+            return;
+        }
+        setDepositLoading(true);
+        try {
+            const res = await api.post('wallet/deposit/', {
+                amount: depositAmount,
+                redirect_base_url: window.location.origin
+            });
+            if (res.data.checkout_url) {
+                // In sandbox mock mode, the checkout_url already redirects to success page
+                window.location.href = res.data.checkout_url;
+            } else {
+                alert('URL de paiement introuvable dans la réponse.');
+            }
+        } catch (e) {
+            alert(e.response?.data?.error || 'Erreur lors de la création du dépôt.');
+        } finally {
+            setDepositLoading(false);
+            setDepositAmount('');
         }
     };
 
@@ -612,16 +724,18 @@ const StudentDashboard = () => {
                             </div>
 
                             {/* Session Logic */}
-                            <div className="flex items-center justify-between mb-12 pb-6 border-b border-slate-200">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12 pb-6 border-b border-slate-200">
                                 <h2 className="text-2xl font-black text-slate-900 flex items-center gap-4 tracking-tight">
-                                    <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center">
-                                        <Clock className="w-6 h-6 text-sky-600" />
+                                    <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center shrink-0">
+                                        {activeTab === 'overview' ? <Clock className="w-6 h-6 text-sky-600" /> : activeTab === 'history' ? <Calendar className="w-6 h-6 text-sky-600" /> : <Wallet className="w-6 h-6 text-sky-600" />}
                                     </div>
-                                    {activeTab === 'overview' ? 'Plan de Travail' : 'Votre Historique'}
+                                    {activeTab === 'overview' ? 'Plan de Travail' : activeTab === 'history' ? 'Votre Historique' : 'Mon Portefeuille'}
                                 </h2>
-                                <button onClick={() => setActiveTab(prev => prev === 'overview' ? 'history' : 'overview')} className="text-[10px] font-black text-sky-600 uppercase tracking-widest px-6 py-3 rounded-xl bg-sky-50 hover:bg-sky-100 transition-all">
-                                    {activeTab === 'overview' ? 'Historique' : 'À Venir'}
-                                </button>
+                                <div className="flex flex-wrap gap-2 bg-slate-100/80 p-1.5 rounded-2xl w-full md:w-auto">
+                                    <button onClick={() => setActiveTab('overview')} className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>À Venir</button>
+                                    <button onClick={() => setActiveTab('history')} className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Historique</button>
+                                    <button onClick={() => setActiveTab('wallet')} className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'wallet' ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Portail Financier</button>
+                                </div>
                             </div>
 
                             {activeTab === 'overview' && (
@@ -816,6 +930,102 @@ const StudentDashboard = () => {
                                                 <p className="text-slate-400 font-medium italic">Aucun cours trouvé dans l'historique pour ces critères.</p>
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'wallet' && (
+                                <div className="space-y-8">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="bg-gradient-to-br from-sky-600 to-indigo-700 p-8 rounded-[2.5rem] text-white shadow-xl shadow-sky-900/20 relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 group-hover:bg-white/20 transition-all duration-700"></div>
+                                            <div className="relative z-10">
+                                                <div className="flex items-center gap-4 mb-2">
+                                                    <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
+                                                        <Wallet className="w-6 h-6 text-white" />
+                                                    </div>
+                                                    <span className="text-xs font-black uppercase tracking-widest text-sky-100">Solde Disponible</span>
+                                                </div>
+                                                <h3 className="text-5xl font-black tracking-tight mt-6 mb-2">
+                                                    {wallet ? parseFloat(wallet.balance).toLocaleString('fr-FR') : '0'} <span className="text-2xl text-sky-200">{user?.currency || 'XOF'}</span>
+                                                </h3>
+                                                <p className="text-sm font-medium text-sky-100">Plus {wallet ? parseFloat(wallet.escrow_balance).toLocaleString('fr-FR') : '0'} {user?.currency || 'XOF'} réservés en séquestre.</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col justify-center">
+                                            <h3 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-6"><CreditCard className="w-6 h-6 text-sky-600" /> Ajouter des fonds</h3>
+                                            <div className="flex flex-col sm:flex-row gap-4">
+                                                <div className="relative flex-1">
+                                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">{user?.currency || 'XOF'}</span>
+                                                    <input
+                                                        type="number"
+                                                        value={depositAmount}
+                                                        onChange={(e) => setDepositAmount(e.target.value)}
+                                                        placeholder="Ex: 10000"
+                                                        className="w-full pl-16 pr-6 py-4 bg-slate-50 border border-transparent focus:border-sky-500 focus:bg-white rounded-2xl outline-none text-slate-900 font-bold transition-all"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleDeposit}
+                                                    disabled={depositLoading}
+                                                    className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 transition-all active:scale-95 whitespace-nowrap"
+                                                >
+                                                    {depositLoading ? 'Chargement...' : 'Faire un dépôt'}
+                                                </button>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 font-bold mt-4">Paiements sécurisés via GeniusPay (Mobile Money & Cartes).</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+                                        <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                                            <h3 className="text-lg font-black text-slate-900">Historique des transactions</h3>
+                                        </div>
+                                        <div className="p-4 md:p-8">
+                                            {transactions.length === 0 ? (
+                                                <div className="text-center py-10">
+                                                    <div className="w-16 h-16 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4"><FileText className="w-6 h-6" /></div>
+                                                    <p className="text-slate-500 font-bold text-sm">Aucune transaction pour le moment.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                                    {transactions.map(tx => (
+                                                        <div key={tx.id} className="flex flex-col sm:flex-row items-center justify-between p-4 sm:p-6 bg-slate-50/50 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-all gap-4">
+                                                            <div className="flex items-center gap-4 w-full sm:w-auto">
+                                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${tx.transaction_type === 'deposit' ? 'bg-emerald-100 text-emerald-600' :
+                                                                    tx.transaction_type === 'booking_refund' ? 'bg-indigo-100 text-indigo-600' :
+                                                                        'bg-slate-200 text-slate-600'
+                                                                    }`}>
+                                                                    {tx.transaction_type === 'deposit' ? <Plus className="w-6 h-6" /> :
+                                                                        tx.transaction_type === 'booking_refund' ? <ArrowRight className="w-6 h-6" /> :
+                                                                            <Minus className="w-6 h-6" />}
+                                                                </div>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-sm font-black text-slate-900 truncate">{tx.description || tx.transaction_type}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{new Date(tx.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} • {tx.status === 'completed' ? 'Complété' : tx.status === 'pending' ? 'En attente' : 'Échoué'}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="w-full sm:w-auto text-right">
+                                                                <div className="flex flex-col items-end gap-2">
+                                                                    <span className={`text-lg font-black ${parseFloat(tx.amount) > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                                        {parseFloat(tx.amount) > 0 ? '+' : ''}{parseFloat(tx.amount).toLocaleString('fr-FR')} {user?.currency || 'XOF'}
+                                                                    </span>
+                                                                    {tx.transaction_type === 'deposit' && tx.status === 'pending' && (
+                                                                        <button
+                                                                            onClick={() => handleVerifyDeposit(tx.reference_id)}
+                                                                            className="text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:underline flex items-center gap-1"
+                                                                        >
+                                                                            <Activity className="w-3 h-3" /> Vérifier
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}

@@ -11,6 +11,9 @@ import ProfilePage from './pages/ProfilePage';
 import MessagingPage from './pages/MessagingPage';
 import VirtualClassroomPage from './pages/VirtualClassroomPage';
 import NotFoundPage from './pages/NotFoundPage';
+import AdminDashboard from './pages/AdminDashboard';
+import PaymentCallbackPage from './pages/PaymentCallbackPage';
+import { Toaster } from 'react-hot-toast';
 
 import { AuthProvider } from './context/AuthContext';
 import { CallProvider } from './context/CallContext';
@@ -65,6 +68,7 @@ const AppContent = () => {
   return (
     <>
       <ScrollToTop />
+      <Toaster position="top-right" />
       <NotificationManager />
       <Navbar />
       <Chatbot />
@@ -75,8 +79,14 @@ const AppContent = () => {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/tutors" element={<SearchPage />} />
+        <Route path="/payment-callback" element={<PaymentCallbackPage />} />
 
         {/* Protected Routes */}
+        <Route path="/admin-dashboard" element={
+          <ProtectedRoute adminOnly={true}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        } />
         <Route path="/student-dashboard" element={
           <ProtectedRoute>
             <StudentDashboard />

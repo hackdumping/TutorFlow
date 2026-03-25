@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import User, Subject, Level, TeacherProfile, Booking, Review, Message, GroupChat, Notification
+from .services import get_currency_for_country
 
 # Redundant UserSerializer removed
 
@@ -16,7 +17,7 @@ class LevelSerializer(serializers.ModelSerializer):
 class UserBasicSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'username', 'first_name', 'last_name', 'profile_picture', 'city', 'country', 'gender')
+        fields = ('id', 'username', 'first_name', 'last_name', 'profile_picture', 'city', 'country', 'gender', 'phone_number')
 
 class TeacherProfileSerializer(serializers.ModelSerializer):
     user = UserBasicSerializer(read_only=True)
@@ -36,12 +37,17 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     teacher_profile = TeacherProfileSerializer(required=False)
-
+    currency = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'role', 'gender',
-                  'city', 'country', 'phone_number', 'profile_picture', 'is_online', 'last_seen', 'teacher_profile')
-        read_only_fields = ('id', 'username', 'role', 'is_online', 'last_seen')
+                  'city', 'country', 'phone_number', 'profile_picture', 'is_online', 'last_seen',
+                  'teacher_profile', 'is_superuser', 'currency')
+        read_only_fields = ('id', 'username', 'role', 'is_online', 'last_seen', 'is_superuser', 'currency')
+
+    def get_currency(self, obj):
+        return get_currency_for_country(obj.country)
 
     def to_internal_value(self, data):
         # Custom logic to handle nested teacher_profile from FormData
@@ -166,3 +172,21 @@ class NotificationSerializer(serializers.ModelSerializer):
         model = Notification
         fields = '__all__'
         read_only_fields = ('created_at',)
+
+from .models import Wallet, Transaction
+
+class WalletSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Wallet
+        fields = ('balance', 'escrow_balance')
+
+class TransactionSerializer(serializers.ModelSerializer):
+    user_full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Transaction
+        fields = '__all__'
+        read_only_fields = ('user', 'created_at', 'status', 'reference_id')
+    
+    def get_user_full_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}" or obj.user.username

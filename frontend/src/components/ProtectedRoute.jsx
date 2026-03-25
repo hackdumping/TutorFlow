@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 /**
  * ProtectedRoute wraps private routes and redirects to /login if the user is not authenticated.
  */
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, adminOnly = false }) => {
     const { user, loading } = useAuth();
     const location = useLocation();
 
@@ -23,6 +23,10 @@ const ProtectedRoute = ({ children }) => {
         // along to that page after they login, which is a nicer user experience
         // than dropping them off on the home page.
         return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+
+    if (adminOnly && user.role !== 'admin' && !user.is_superuser) {
+        return <Navigate to="/" replace />;
     }
 
     return children;

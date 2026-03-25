@@ -295,7 +295,7 @@ const Navbar = () => {
                                         </div>
 
                                         <Link
-                                            to={user.role === 'teacher' ? '/teacher-dashboard' : '/student-dashboard'}
+                                            to={(user.role === 'admin' || user.is_superuser) ? '/admin-dashboard' : user.role === 'teacher' ? '/teacher-dashboard' : '/student-dashboard'}
                                             className="flex items-center gap-2 px-4 py-2.5 bg-slate-950 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-sky-600 transition-all shadow-lg"
                                         >
                                             <LayoutDashboard className="w-3.5 h-3.5" />
@@ -407,7 +407,7 @@ const Navbar = () => {
                                         ) : (
                                             <div className="grid grid-cols-1 gap-3">
                                                 <Link
-                                                    to={user.role === 'teacher' ? '/teacher-dashboard' : '/student-dashboard'}
+                                                    to={(user.role === 'admin' || user.is_superuser) ? '/admin-dashboard' : user.role === 'teacher' ? '/teacher-dashboard' : '/student-dashboard'}
                                                     onClick={() => setIsMobileMenuOpen(false)}
                                                     className="w-full py-4 bg-slate-950 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
                                                 >

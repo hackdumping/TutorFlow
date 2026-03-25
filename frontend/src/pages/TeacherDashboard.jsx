@@ -8,7 +8,7 @@ import {
     Sparkles, User, Star, Plus, PieChart, Menu, X,
     Video, MapPin, MessageSquare, Check, XCircle, Loader2,
     Shield, CheckCheck, Home, KeyRound, FileDown, Search, Filter,
-    Download, FileText, ChevronLeft, AlertCircle
+    Download, FileText, ChevronLeft, AlertCircle, Wallet, CreditCard, ArrowRight, Minus
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -31,6 +31,12 @@ const TeacherDashboard = () => {
     const [historyFilters, setHistoryFilters] = useState({ startDate: '', endDate: '' });
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+
+    // Financial State
+    const [wallet, setWallet] = useState(null);
+    const [transactions, setTransactions] = useState([]);
+    const [withdrawAmount, setWithdrawAmount] = useState('');
+    const [withdrawLoading, setWithdrawLoading] = useState(false);
 
     const downloadCSV = (data) => {
         const headers = ["Date", "Heure", "Élève", "Matière", "Type", "Durée (h)", "Statut"];
@@ -164,18 +170,59 @@ const TeacherDashboard = () => {
             }
         };
 
+        const fetchWalletData = async () => {
+            try {
+                const wRes = await api.get('wallet/me/');
+                setWallet(wRes.data);
+                const tRes = await api.get('transactions/');
+                setTransactions(tRes.data);
+            } catch (err) {
+                console.error("Error fetching wallet data", err);
+            }
+        };
+
         fetchBookings();
         fetchTeacherProfile();
         fetchStudents();
         fetchNotifications();
+        fetchWalletData();
 
         const interval = setInterval(() => {
             fetchBookings();
             fetchNotifications();
+            fetchWalletData();
         }, 30000);
 
         return () => clearInterval(interval);
     }, []);
+
+    const handleWithdraw = async () => {
+        if (!withdrawAmount || isNaN(withdrawAmount) || Number(withdrawAmount) <= 0) {
+            alert('Veuillez entrer un montant valide.');
+            return;
+        }
+        if (!user.phone_number) {
+            if (window.confirm("Vous devez renseigner votre numéro de téléphone (ainsi que votre pays et ville) dans votre profil avant de faire un retrait.\nVoulez-vous aller sur votre profil maintenant ?")) {
+                navigate('/profile');
+            }
+            return;
+        }
+        setWithdrawLoading(true);
+        try {
+            await api.post('wallet/withdraw/', { amount: withdrawAmount });
+            alert('Retrait initié avec succès ! Les fonds seront transférés sur votre compte Mobile Money très prochainement.');
+            // Refresh
+            const wRes = await api.get('wallet/me/');
+            setWallet(wRes.data);
+            const tRes = await api.get('transactions/');
+            setTransactions(tRes.data);
+        } catch (e) {
+            alert(e.response?.data?.error || 'Erreur lors du retrait.');
+        } finally {
+            setWithdrawLoading(false);
+            setWithdrawAmount('');
+        }
+    };
 
     const handleUpdateRate = async () => {
         setIsSavingRate(true);
@@ -491,7 +538,7 @@ const TeacherDashboard = () => {
                                     </div>
                                 ) : (
                                     <div className="flex items-center justify-between group cursor-pointer" onClick={() => setIsEditingRate(true)}>
-                                        <span className="text-lg font-black text-slate-900">{teacherProfile?.hourly_rate || '0.00'} <span className="text-[10px] text-slate-400">FCFA/h</span></span>
+                                        <span className="text-lg font-black text-slate-900">{teacherProfile?.hourly_rate || '0.00'} <span className="text-[10px] text-slate-400">{user?.currency || 'XOF'}/h</span></span>
                                         <Settings className="w-4 h-4 text-slate-300 group-hover:text-sky-600 transition-colors" />
                                     </div>
                                 )}
@@ -704,7 +751,7 @@ const TeacherDashboard = () => {
                         {(activeTab === 'overview' || activeTab === 'revenue') && (
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-8">
                                 {[
-                                    { label: 'Revenus', val: `${statsData.earnings} F`, icon: DollarSign, color: 'emerald' },
+                                    { label: 'Revenus', val: `${statsData.earnings} ${user?.currency || 'XOF'}`, icon: DollarSign, color: 'emerald' },
                                     { label: 'Élèves', val: statsData.students, icon: Users, color: 'sky' },
                                     { label: 'Sessions', val: statsData.sessions, icon: CheckCircle, color: 'purple' },
                                     { label: 'En attente', val: statsData.pending, icon: Clock, color: 'amber' },
@@ -1149,14 +1196,89 @@ const TeacherDashboard = () => {
 
                         {/* Revenue Tab */}
                         {activeTab === 'revenue' && (
-                            <div className="bg-white p-12 rounded-[3rem] border border-slate-200/60 shadow-sm text-center">
-                                <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner border 
-border-emerald-100">
-                                    <DollarSign className="w-10 h-10" />
+                            <div className="space-y-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-gradient-to-br from-emerald-500 to-teal-700 p-8 rounded-[2.5rem] text-white shadow-xl shadow-emerald-900/20 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 group-hover:bg-white/20 transition-all duration-700"></div>
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-4 mb-2">
+                                                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
+                                                    <Wallet className="w-6 h-6 text-white" />
+                                                </div>
+                                                <span className="text-xs font-black uppercase tracking-widest text-emerald-100">Solde Disponible</span>
+                                            </div>
+                                            <h3 className="text-5xl font-black tracking-tight mt-6 mb-2">
+                                                {wallet ? parseFloat(wallet.balance).toLocaleString('fr-FR') : '0'} <span className="text-2xl text-emerald-200">{user?.currency || 'XOF'}</span>
+                                            </h3>
+                                            <p className="text-sm font-medium text-emerald-100">Plus {wallet ? parseFloat(wallet.escrow_balance).toLocaleString('fr-FR') : '0'} {user?.currency || 'XOF'} en attente de validation.</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col justify-center">
+                                        <h3 className="text-lg font-black text-slate-900 flex items-center gap-3 mb-6"><CreditCard className="w-6 h-6 text-emerald-600" /> Retirer mes gains</h3>
+                                        <div className="flex flex-col sm:flex-row gap-4">
+                                            <div className="relative flex-1">
+                                                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 font-black">{user?.currency || 'XOF'}</span>
+                                                <input
+                                                    type="number"
+                                                    value={withdrawAmount}
+                                                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                                                    placeholder="Ex: 5000"
+                                                    className="w-full pl-16 pr-6 py-4 bg-slate-50 border border-transparent focus:border-emerald-500 focus:bg-white rounded-2xl outline-none text-slate-900 font-bold transition-all"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleWithdraw}
+                                                disabled={withdrawLoading}
+                                                className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 disabled:opacity-50 transition-all active:scale-95 whitespace-nowrap"
+                                            >
+                                                {withdrawLoading ? 'Traitement...' : 'Retirer'}
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 font-bold mt-4">Frais de plateforme (20%) déduits automatiquement. Retraits via GeniusPay.</p>
+                                    </div>
                                 </div>
-                                <h2 className="text-3xl lg:text-5xl font-black text-slate-900 mb-4 tracking-tighter">Revenus Détaillés</h2>
-                                <p className="text-slate-500 font-medium max-w-md mx-auto mb-10 leading-relaxed">L'historique complet de vos transactions et paiements arrivera très prochainement dans cette section dédiée.</p>
-                                <button className="px-10 py-5 bg-slate-950 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-sky-600 transition-colors shadow-xl shadow-slate-900/10 active:scale-95">Télécharger le rapport (Bientôt)</button>
+
+                                <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                                        <h3 className="text-lg font-black text-slate-900">Historique des transactions financières</h3>
+                                    </div>
+                                    <div className="p-4 md:p-8">
+                                        {transactions.length === 0 ? (
+                                            <div className="text-center py-10">
+                                                <div className="w-16 h-16 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-4"><FileText className="w-6 h-6" /></div>
+                                                <p className="text-slate-500 font-bold text-sm">Aucune transaction pour le moment.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                                {transactions.map(tx => (
+                                                    <div key={tx.id} className="flex flex-col sm:flex-row items-center justify-between p-4 sm:p-6 bg-slate-50/50 rounded-2xl border border-slate-100 hover:bg-slate-50 transition-all gap-4">
+                                                        <div className="flex items-center gap-4 w-full sm:w-auto">
+                                                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${tx.transaction_type === 'booking_payment' ? 'bg-emerald-100 text-emerald-600' :
+                                                                tx.transaction_type === 'withdrawal' ? 'bg-amber-100 text-amber-600' :
+                                                                    tx.transaction_type === 'fee' ? 'bg-indigo-100 text-indigo-600' :
+                                                                        'bg-slate-200 text-slate-600'
+                                                                }`}>
+                                                                {tx.transaction_type === 'booking_payment' ? <Plus className="w-6 h-6" /> :
+                                                                    tx.transaction_type === 'withdrawal' ? <ArrowRight className="w-6 h-6" /> :
+                                                                        <Minus className="w-6 h-6" />}
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-sm font-black text-slate-900 truncate">{tx.description || tx.transaction_type}</p>
+                                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{new Date(tx.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} • {tx.status === 'completed' ? 'Complété' : tx.status === 'pending' ? 'En attente' : 'Échoué'}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-full sm:w-auto text-right">
+                                                            <span className={`text-lg font-black ${parseFloat(tx.amount) > 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                                {parseFloat(tx.amount) > 0 ? '+' : ''}{parseFloat(tx.amount).toLocaleString('fr-FR')} {user?.currency || 'XOF'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>

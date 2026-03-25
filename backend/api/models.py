@@ -78,6 +78,7 @@ class Booking(models.Model):
     date = models.DateField()
     time = models.TimeField()
     duration_hours = models.FloatField(default=1.0)
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     course_type = models.CharField(max_length=20, choices=COURSE_TYPE_CHOICES, default='in_person')
     meeting_link = models.URLField(blank=True, null=True)
@@ -206,5 +207,55 @@ class Notification(models.Model):
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+class Wallet(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet')
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.0)
+    escrow_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.0)
+    
+    def __str__(self):
+        return f"Wallet of {self.user.username} - {self.balance} XOF"
+
+class Transaction(models.Model):
+    TRANSACTION_TYPE_CHOICES = [
+        ('deposit', 'Dépôt'),
+        ('withdrawal', 'Retrait'),
+        ('booking_hold', 'Montant bloqué (Réservation)'),
+        ('booking_payout', 'Paiement (Cours validé)'),
+        ('booking_refund', 'Remboursement (Cours annulé)'),
+        ('platform_fee', 'Commission Plateforme'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'En attente'),
+        ('completed', 'Complété'),
+        ('failed', 'Échoué'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPE_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    reference_id = models.CharField(max_length=100, blank=True, null=True, unique=True) # GeniusPay reference
+    booking = models.ForeignKey(Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
+    description = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
     class Meta:
         ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.transaction_type} - {self.amount} XOF - {self.user.username}"
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=User)
+def create_user_wallet(sender, instance, created, **kwargs):
+    if created:
+        Wallet.objects.create(user=instance)
+
+@receiver(post_save, sender=User)
+def save_user_wallet(sender, instance, **kwargs):
+    if not hasattr(instance, 'wallet'):
+        Wallet.objects.create(user=instance)
+    else:
+        instance.wallet.save()

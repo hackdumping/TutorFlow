@@ -19,7 +19,8 @@ const LoginPage = () => {
         setIsLoading(true);
         try {
             const user = await login(username, password);
-            if (user.role === 'teacher') navigate('/teacher-dashboard');
+            if (user.role === 'admin' || user.is_superuser) navigate('/admin-dashboard');
+            else if (user.role === 'teacher') navigate('/teacher-dashboard');
             else navigate('/student-dashboard');
         } catch (err) {
             setError('Identifiants incorrects. Veuillez réessayer.');

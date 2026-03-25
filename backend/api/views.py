@@ -9,7 +9,7 @@ from .serializers import (
     GroupChatSerializer, NotificationSerializer
 )
 from django.utils import timezone
-from .models import User, Subject, Level, TeacherProfile, Booking, Review, Message, GroupChat, Notification, GroupReadReceipt
+from .models import User, Subject, Level, TeacherProfile, Booking, Review, Message, GroupChat, Notification, GroupReadReceipt, Transaction
 
 
 class IsAdminOrSelf(permissions.BasePermission):
@@ -92,9 +92,26 @@ class BookingViewSet(viewsets.ModelViewSet):
 
             if should_cancel:
                 reason = "non-confirmation" if b.status == 'pending' else "non-validation"
-                b.status = 'cancelled'
-                b.payment_status = 'unpaid'
-                b.save(update_fields=['status', 'payment_status'])
+                
+                if b.status != 'cancelled' and b.payment_status != 'refunded':
+                    from django.db import transaction
+                    with transaction.atomic():
+                        student_wallet = b.student.wallet
+                        student_wallet.escrow_balance -= b.price
+                        student_wallet.balance += b.price
+                        student_wallet.save()
+                        
+                        Transaction.objects.create(
+                            user=b.student,
+                            amount=b.price,
+                            transaction_type='booking_refund',
+                            status='completed',
+                            booking=b,
+                            description=f"Remboursement suite à l'annulation automatique du cours {b.subject.name}"
+                        )
+                        b.status = 'cancelled'
+                        b.payment_status = 'refunded'
+                        b.save(update_fields=['status', 'payment_status'])
                 
                 Notification.objects.create(
                     user=b.student,
@@ -121,14 +138,46 @@ class BookingViewSet(viewsets.ModelViewSet):
         ).order_by('-date', '-time')
 
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        from django.db import transaction
+        from decimal import Decimal
+        
         user = self.request.user
-        if user.role == 'teacher':
-            # Teachers must provide a student object in the request
-            # The serializer usually expects a PK for 'student' field
-            booking = serializer.save(teacher=user.teacher_profile)
-        else:
-            # Students are request.user
-            booking = serializer.save(student=user)
+        
+        with transaction.atomic():
+            if user.role == 'teacher':
+                teacher_profile = user.teacher_profile
+                student_id = self.request.data.get('student')
+                student = User.objects.get(id=student_id)
+            else:
+                student = user
+                teacher_id = self.request.data.get('teacher')
+                teacher_profile = TeacherProfile.objects.get(id=teacher_id)
+                
+            duration_hours = Decimal(str(self.request.data.get('duration_hours', 1.0)))
+            price = teacher_profile.hourly_rate * duration_hours
+            
+            student_wallet = student.wallet
+            if student_wallet.balance < price:
+                raise ValidationError({"detail": f"Solde insuffisant pour réserver (Prix : {price} XOF, Solde : {student_wallet.balance} XOF)."})
+                
+            student_wallet.balance -= price
+            student_wallet.escrow_balance += price
+            student_wallet.save()
+
+            if user.role == 'teacher':
+                booking = serializer.save(teacher=teacher_profile, price=price)
+            else:
+                booking = serializer.save(student=student, price=price)
+                
+            Transaction.objects.create(
+                user=student,
+                amount=-price,
+                transaction_type='booking_hold',
+                status='completed',
+                booking=booking,
+                description=f"Fonds sécurisés pour le cours {booking.subject.name} (Pr. {teacher_profile.user.first_name})"
+            )
             
         # Create notification for the OTHER party
         if user.role == 'teacher':
@@ -169,10 +218,46 @@ class BookingViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Students can only cancel sessions.'}, status=status.HTTP_403_FORBIDDEN)
 
         old_status = booking.status
-        booking.status = new_status
-        if new_status == 'cancelled':
-            booking.payment_status = 'unpaid'
-        booking.save()
+        
+        from django.db import transaction
+        with transaction.atomic():
+            if new_status == 'cancelled' and old_status != 'cancelled' and booking.payment_status != 'refunded':
+                student_wallet = booking.student.wallet
+                student_wallet.escrow_balance -= booking.price
+                student_wallet.balance += booking.price
+                student_wallet.save()
+                
+                Transaction.objects.create(
+                    user=booking.student,
+                    amount=booking.price,
+                    transaction_type='booking_refund',
+                    status='completed',
+                    booking=booking,
+                    description=f"Remboursement de la réservation {booking.subject.name}"
+                )
+                booking.payment_status = 'refunded'
+                
+            # If manual completion by teacher (though typically via online validation or code)
+            elif new_status == 'completed' and old_status != 'completed' and booking.payment_status != 'paid':
+                student_wallet = booking.student.wallet
+                teacher_wallet = booking.teacher.user.wallet
+                student_wallet.escrow_balance -= booking.price
+                teacher_wallet.balance += booking.price
+                student_wallet.save()
+                teacher_wallet.save()
+                
+                Transaction.objects.create(
+                    user=booking.teacher.user,
+                    amount=booking.price,
+                    transaction_type='booking_payout',
+                    status='completed',
+                    booking=booking,
+                    description=f"Paiement cours validé {booking.subject.name} (Elève: {booking.student.first_name})"
+                )
+                booking.payment_status = 'paid'
+
+            booking.status = new_status
+            booking.save(update_fields=['status', 'payment_status'])
 
         # Notify the OTHER party
         recipient = booking.student if is_teacher else booking.teacher.user
@@ -235,12 +320,32 @@ class BookingViewSet(viewsets.ModelViewSet):
         if booking.course_type != 'online':
             return Response({'error': 'Only for online bookings'}, status=status.HTTP_400_BAD_REQUEST)
 
-        booking.session_ended_at = timezone.now()
-        if booking.session_started_at:
-            delta = booking.session_ended_at - booking.session_started_at
-            booking.actual_duration_minutes = int(delta.total_seconds() / 60)
-        booking.status = 'completed'
-        booking.save(update_fields=['session_ended_at', 'actual_duration_minutes', 'status'])
+        from django.db import transaction
+        with transaction.atomic():
+            booking.session_ended_at = timezone.now()
+            if booking.session_started_at:
+                delta = booking.session_ended_at - booking.session_started_at
+                booking.actual_duration_minutes = int(delta.total_seconds() / 60)
+                
+            if booking.status != 'completed' and booking.payment_status != 'paid':
+                student_wallet = booking.student.wallet
+                teacher_wallet = booking.teacher.user.wallet
+                student_wallet.escrow_balance -= booking.price
+                teacher_wallet.balance += booking.price
+                student_wallet.save()
+                teacher_wallet.save()
+                Transaction.objects.create(
+                    user=booking.teacher.user,
+                    amount=booking.price,
+                    transaction_type='booking_payout',
+                    status='completed',
+                    booking=booking,
+                    description=f"Paiement visio {booking.subject.name} ({booking.student.first_name})"
+                )
+                booking.payment_status = 'paid'
+
+            booking.status = 'completed'
+            booking.save(update_fields=['session_ended_at', 'actual_duration_minutes', 'status', 'payment_status'])
 
         # Notify both parties
         Notification.objects.create(
@@ -312,10 +417,29 @@ class BookingViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Code expiré. Demandez à l\'élève d\'en générer un nouveau.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # All good — mark as validated + completed
-        booking.is_validated = True
-        booking.status = 'completed'
-        booking.validation_code = None  # invalidate after use
-        booking.save(update_fields=['is_validated', 'status', 'validation_code'])
+        from django.db import transaction
+        with transaction.atomic():
+            if booking.status != 'completed' and booking.payment_status != 'paid':
+                student_wallet = booking.student.wallet
+                teacher_wallet = booking.teacher.user.wallet
+                student_wallet.escrow_balance -= booking.price
+                teacher_wallet.balance += booking.price
+                student_wallet.save()
+                teacher_wallet.save()
+                Transaction.objects.create(
+                    user=booking.teacher.user,
+                    amount=booking.price,
+                    transaction_type='booking_payout',
+                    status='completed',
+                    booking=booking,
+                    description=f"Paiement code validé {booking.subject.name} ({booking.student.first_name})"
+                )
+                booking.payment_status = 'paid'
+
+            booking.is_validated = True
+            booking.status = 'completed'
+            booking.validation_code = None  # invalidate after use
+            booking.save(update_fields=['is_validated', 'status', 'validation_code', 'payment_status'])
 
         # Notify student
         Notification.objects.create(
